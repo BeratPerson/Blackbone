@@ -128,21 +128,21 @@ DWORD WINAPI WorkerThread(LPVOID lpParam)
 // ============================================
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
-    if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
+    (void)lpReserved; // kullanilmiyor, warning engelle
+
+    if (ul_reason_for_call == DLL_PROCESS_ATTACH)
+    {
         DisableThreadLibraryCalls(hModule);
-
-        // Loader Lock'tan kaÃ§mak iÃ§in async thread baÅŸlat
         CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
-            HMODULE hSelf = (HMODULE)param;
-            Sleep(2500); // Loader lock ve init bitsin
+            (void)param; // lambda warning engelle (asagida cast ediyoruz)
 
+            HMODULE hSelf = (HMODULE)param;
+            Sleep(2500);
             SelfUnlinkPEB(hSelf);
             WipePEHeader(hSelf);
-
-            // ArtÄ±k XignCode3 user-mode PEB scan'de gÃ¶remez
             WorkerThread(hSelf);
             return 0;
-        }, hModule, 0, nullptr);
+            }, hModule, 0, nullptr);
     }
     return TRUE;
 }

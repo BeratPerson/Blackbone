@@ -580,8 +580,10 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="GameMemory.cpp" />
     <ClInclude Include="GameMemory.h" />
+    <ClCompile Include="InjectorUI.cpp" />
     <ClCompile Include="ManualMap.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>

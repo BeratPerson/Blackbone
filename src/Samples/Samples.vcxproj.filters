@@ -5,6 +5,8 @@
     <ClCompile Include="ManualMapXign.cpp" />
     <ClCompile Include="GameMemory.cpp" />
     <ClCompile Include="ManualMap.cpp" />
+    <ClCompile Include="InjectorUI.cpp" />
+    <ClCompile Include="dllmain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ManualMapXign.h" />
