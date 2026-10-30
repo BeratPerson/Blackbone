@@ -13,12 +13,11 @@
 #include <vector>
 #include <map>
 #include <tuple>
-namespace blackbone { class Process; }
 
-#include "BlackBone/Process/Process.h"
-#include "BlackBone/ManualMap/MMap.h"
 namespace blackbone
 {
+
+class Process;
 
 class CustomArgs_t
 {
