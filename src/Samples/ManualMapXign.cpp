@@ -133,10 +133,11 @@ uintptr_t ManualMapDll(Process& proc, const wchar_t* dllPath)
 {
     InternalLog(L"[*] ManualMap: Haritalama baslatiliyor (DLL: %s)...", dllPath);
 
-    auto image = proc.mmap().MapImage(dllPath,
-        eLoadFlags::WipeHeader |       // PE header bellekten silinir
-        eLoadFlags::HideVAD            // NtQueryVirtualMemory ile gorunmez
-    );
+    eLoadFlags flags = eLoadFlags::WipeHeader;
+    if (NT_SUCCESS(Driver().EnsureLoaded()))
+        flags |= eLoadFlags::HideVAD;
+
+    auto image = proc.mmap().MapImage(dllPath, flags);
 
     if (!image)
     {
