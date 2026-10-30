@@ -1,6 +1,6 @@
 // InjectorUI.cpp
 // Blackbone tabanli Knight Online XignCode3 Bypass Injector
-// Detayli Loglama + Nullparam Cozumu + Win32 UI + Timing Manual Map
+// Detayli Loglama + procID & nullparam Cozumu + Launcher Oto-Yakala + Timing Manual Map
 
 #include <windows.h>
 #include <windowsx.h>
@@ -19,22 +19,26 @@
 using namespace blackbone;
 
 // ==================== UI IDs ====================
-#define IDC_EDIT_KO_PATH    101
-#define IDC_BTN_BROWSE_KO   102
-#define IDC_EDIT_DLL_PATH   103
-#define IDC_BTN_BROWSE_DLL  104
-#define IDC_EDIT_ARGS       105
-#define IDC_BTN_LAUNCH      106
-#define IDC_BTN_ATTACH      107
-#define IDC_BTN_INJECT      108
-#define IDC_BTN_CLEAR_LOG   109
-#define IDC_LOG             110
+#define IDC_EDIT_KO_PATH        101
+#define IDC_BTN_BROWSE_KO       102
+#define IDC_EDIT_DLL_PATH       103
+#define IDC_BTN_BROWSE_DLL      104
+#define IDC_EDIT_ARGS           105
+#define IDC_CHK_AUTO_INJECT     106
+#define IDC_BTN_LAUNCH          107
+#define IDC_BTN_LAUNCH_LAUNCHER 108
+#define IDC_BTN_ATTACH          109
+#define IDC_BTN_INJECT          110
+#define IDC_BTN_CLEAR_LOG       111
+#define IDC_LOG                 112
 
 // ==================== GLOBALS ====================
 HWND g_hEditKo = nullptr;
 HWND g_hEditDll = nullptr;
 HWND g_hEditArgs = nullptr;
+HWND g_hChkAutoInject = nullptr;
 HWND g_hBtnLaunch = nullptr;
+HWND g_hBtnLaunchLauncher = nullptr;
 HWND g_hBtnAttach = nullptr;
 HWND g_hBtnInject = nullptr;
 HWND g_hLog = nullptr;
@@ -230,6 +234,42 @@ void PerformInjectAsync(DWORD pid, const std::wstring& dllPath)
     }).detach();
 }
 
+// ==================== PROCESS WATCHER ====================
+void StartProcessWatcher(const std::wstring& dllPath)
+{
+    std::thread([dllPath]() {
+        Log(L"[*] Surec izleyici (Watcher) devrede. 'KnightOnLine.exe' bekleniyor...");
+        Log(L"[*] (Eger Launcher actiysaniz 'Start' butonuna basiniz)");
+
+        DWORD targetPid = 0;
+        for (int i = 0; i < 120; ++i)
+        {
+            targetPid = FindProcessByName(L"KnightOnLine.exe");
+            if (!targetPid) targetPid = FindProcessByName(L"KnightOnline.exe");
+            if (!targetPid) targetPid = FindProcessByName(L"knightonline.exe");
+
+            if (targetPid != 0)
+            {
+                Log(L"[+] 'KnightOnLine.exe' YAKALANDI! PID: %lu", targetPid);
+                g_koPid = targetPid;
+                if (g_hBtnInject) EnableWindow(g_hBtnInject, TRUE);
+
+                // Otomatik inject aktifse hemen baslat
+                LRESULT checked = SendMessageW(g_hChkAutoInject, BM_GETCHECK, 0, 0);
+                if (checked == BST_CHECKED)
+                {
+                    Log(L"[*] Otomatik Enjekte aktif. Zamanlama baslatiliyor...");
+                    PerformInjectAsync(targetPid, dllPath);
+                }
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+
+        Log(L"[!] Zaman asimi: 60 saniye boyunca 'KnightOnLine.exe' gorulmedi.");
+    }).detach();
+}
+
 // ==================== WIN32 UI ====================
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -245,49 +285,63 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             WS_VISIBLE | WS_CHILD | SS_LEFT, x, y, 140, 18, hWnd, nullptr, nullptr, nullptr);
 
         g_hEditKo = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"C:\\NTTGame\\KnightOnlineEn\\KnightOnLine.exe",
-            WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, x + 150, y, 360, 20, hWnd, (HMENU)IDC_EDIT_KO_PATH, nullptr, nullptr);
+            WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, x + 150, y, 390, 20, hWnd, (HMENU)IDC_EDIT_KO_PATH, nullptr, nullptr);
 
         CreateWindowExW(0, L"BUTTON", L"...",
-            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 520, y - 1, 40, 22, hWnd, (HMENU)IDC_BTN_BROWSE_KO, nullptr, nullptr);
+            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 550, y - 1, 40, 22, hWnd, (HMENU)IDC_BTN_BROWSE_KO, nullptr, nullptr);
 
-        y += 35;
+        y += 32;
 
         // DLL Path
         CreateWindowExW(0, L"STATIC", L"Enjekte DLL Yolu:",
             WS_VISIBLE | WS_CHILD | SS_LEFT, x, y, 140, 18, hWnd, nullptr, nullptr, nullptr);
 
         g_hEditDll = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"berat.dll",
-            WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, x + 150, y, 360, 20, hWnd, (HMENU)IDC_EDIT_DLL_PATH, nullptr, nullptr);
+            WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, x + 150, y, 390, 20, hWnd, (HMENU)IDC_EDIT_DLL_PATH, nullptr, nullptr);
 
         CreateWindowExW(0, L"BUTTON", L"...",
-            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 520, y - 1, 40, 22, hWnd, (HMENU)IDC_BTN_BROWSE_DLL, nullptr, nullptr);
+            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 550, y - 1, 40, 22, hWnd, (HMENU)IDC_BTN_BROWSE_DLL, nullptr, nullptr);
 
-        y += 35;
+        y += 32;
 
-        // Launch Arguments (Nullparam Bypass)
+        // Launch Arguments (procID & nullparam cozumu)
         CreateWindowExW(0, L"STATIC", L"Baslatma Argumani:",
             WS_VISIBLE | WS_CHILD | SS_LEFT, x, y, 140, 18, hWnd, nullptr, nullptr, nullptr);
 
-        g_hEditArgs = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"1",
-            WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, x + 150, y, 60, 20, hWnd, (HMENU)IDC_EDIT_ARGS, nullptr, nullptr);
+        DWORD myPid = GetCurrentProcessId();
+        wchar_t pidStr[32] = {};
+        swprintf_s(pidStr, L"%lu", myPid);
 
-        CreateWindowExW(0, L"STATIC", L"(Varsayilan '1' nullparam hatasini cozer)",
-            WS_VISIBLE | WS_CHILD | SS_LEFT, x + 220, y + 2, 340, 18, hWnd, nullptr, nullptr, nullptr);
+        g_hEditArgs = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", pidStr,
+            WS_VISIBLE | WS_CHILD | ES_AUTOHSCROLL, x + 150, y, 80, 20, hWnd, (HMENU)IDC_EDIT_ARGS, nullptr, nullptr);
 
-        y += 45;
+        CreateWindowExW(0, L"STATIC", L"(Gecerli canli procID parametresi !-(procID) ve -(nullparam) kontrollerini asar)",
+            WS_VISIBLE | WS_CHILD | SS_LEFT, x + 240, y + 2, 380, 18, hWnd, nullptr, nullptr, nullptr);
 
-        // Action Buttons
+        y += 30;
+
+        // Auto-Inject Checkbox
+        g_hChkAutoInject = CreateWindowExW(0, L"BUTTON", L"Otomatik Enjekte Et (Oyun basladigi anda otomatik inject et)",
+            WS_VISIBLE | WS_CHILD | BS_AUTOCHECKBOX, x + 150, y, 400, 20, hWnd, (HMENU)IDC_CHK_AUTO_INJECT, nullptr, nullptr);
+        SendMessageW(g_hChkAutoInject, BM_SETCHECK, BST_CHECKED, 0);
+
+        y += 35;
+
+        // Action Buttons Row
         g_hBtnLaunch = CreateWindowExW(0, L"BUTTON", L"Oyunu Baslat",
-            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 20, y, 120, 30, hWnd, (HMENU)IDC_BTN_LAUNCH, nullptr, nullptr);
+            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x, y, 130, 32, hWnd, (HMENU)IDC_BTN_LAUNCH, nullptr, nullptr);
+
+        g_hBtnLaunchLauncher = CreateWindowExW(0, L"BUTTON", L"Launcher ile Baslat",
+            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 140, y, 140, 32, hWnd, (HMENU)IDC_BTN_LAUNCH_LAUNCHER, nullptr, nullptr);
 
         g_hBtnAttach = CreateWindowExW(0, L"BUTTON", L"Acik Oyuna Baglan",
-            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 155, y, 130, 30, hWnd, (HMENU)IDC_BTN_ATTACH, nullptr, nullptr);
+            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 290, y, 135, 32, hWnd, (HMENU)IDC_BTN_ATTACH, nullptr, nullptr);
 
-        g_hBtnInject = CreateWindowExW(0, L"BUTTON", L"Inject Et",
-            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, x + 295, y, 120, 30, hWnd, (HMENU)IDC_BTN_INJECT, nullptr, nullptr);
+        g_hBtnInject = CreateWindowExW(0, L"BUTTON", L"Manuel Inject Et",
+            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | WS_DISABLED, x + 435, y, 120, 32, hWnd, (HMENU)IDC_BTN_INJECT, nullptr, nullptr);
 
-        CreateWindowExW(0, L"BUTTON", L"Log Temizle",
-            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 465, y, 95, 30, hWnd, (HMENU)IDC_BTN_CLEAR_LOG, nullptr, nullptr);
+        CreateWindowExW(0, L"BUTTON", L"Temizle",
+            WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x + 565, y, 65, 32, hWnd, (HMENU)IDC_BTN_CLEAR_LOG, nullptr, nullptr);
 
         y += 45;
 
@@ -297,17 +351,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         y += 20;
         g_hLog = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
             WS_VISIBLE | WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL,
-            x, y, 560, 280, hWnd, (HMENU)IDC_LOG, nullptr, nullptr);
+            x, y, 630, 280, hWnd, (HMENU)IDC_LOG, nullptr, nullptr);
 
         SendMessageW(g_hEditKo, WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessageW(g_hEditDll, WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessageW(g_hEditArgs, WM_SETFONT, (WPARAM)hFont, TRUE);
+        SendMessageW(g_hChkAutoInject, WM_SETFONT, (WPARAM)hFont, TRUE);
         SendMessageW(g_hLog, WM_SETFONT, (WPARAM)hFont, TRUE);
 
         SetXignLogCallback(Log);
 
-        Log(L"UI Yuklendi. Knight Online path ve DLL secip 'Oyunu Baslat' tikla.");
-        Log(L"[*] Parametre '1' aktif: 'Please execute Knight online via launcher -(nullparam)' engellendi.");
+        Log(L"UI Yuklendi. Hazir.");
+        Log(L"[*] Canli procID (%lu) parametresi tanimlandi. !-(procID) hatasi cozuldu.", myPid);
+        Log(L"[*] Tavsiye: 'Oyunu Baslat' ile veya 'Launcher ile Baslat' ile oyunu guvenle acabilirsiniz.");
         return 0;
     }
 
@@ -315,11 +371,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
         if (LOWORD(wParam) == IDC_BTN_BROWSE_KO)
         {
-            auto path = BrowseFile(hWnd, L"Executables (*.exe)\0*.exe\0All Files (*.*)\0*.*\0\0", L"KnightOnline.exe Sec");
+            auto path = BrowseFile(hWnd, L"Executables (*.exe)\0*.exe\0All Files (*.*)\0*.*\0\0", L"KnightOnline.exe / Launcher.exe Sec");
             if (!path.empty())
             {
                 SetWindowTextW(g_hEditKo, path.c_str());
-                Log(L"[>] Knight Online secildi: %s", path.c_str());
+                Log(L"[>] Hedef dosya secildi: %s", path.c_str());
             }
         }
         else if (LOWORD(wParam) == IDC_BTN_BROWSE_DLL)
@@ -340,17 +396,79 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             Log(L"[*] Calisan 'KnightOnLine.exe' sureci araniyor...");
             DWORD pid = FindProcessByName(L"KnightOnLine.exe");
             if (pid == 0) pid = FindProcessByName(L"KnightOnline.exe");
+            if (pid == 0) pid = FindProcessByName(L"knightonline.exe");
 
             if (pid != 0)
             {
                 g_koPid = pid;
                 Log(L"[+] Calisan Knight Online tespit edildi! PID: %lu", g_koPid);
                 EnableWindow(g_hBtnInject, TRUE);
+
+                wchar_t dllPath[MAX_PATH] = {};
+                GetWindowTextW(g_hEditDll, dllPath, MAX_PATH);
+
+                LRESULT checked = SendMessageW(g_hChkAutoInject, BM_GETCHECK, 0, 0);
+                if (checked == BST_CHECKED && *dllPath)
+                {
+                    Log(L"[*] Otomatik Enjekte devrede, enjeksiyon baslatiliyor...");
+                    PerformInjectAsync(g_koPid, dllPath);
+                }
             }
             else
             {
                 Log(L"[-] 'KnightOnLine.exe' su anda calismiyor.");
-                MessageBoxW(hWnd, L"KnightOnLine.exe bulunamadi! Once oyunu baslatin.", L"Bulunamadi", MB_ICONINFORMATION);
+                MessageBoxW(hWnd, L"KnightOnLine.exe bulunamadi! Once oyunu veya Launcher'i baslatin.", L"Bulunamadi", MB_ICONINFORMATION);
+            }
+        }
+        else if (LOWORD(wParam) == IDC_BTN_LAUNCH_LAUNCHER)
+        {
+            wchar_t koPath[MAX_PATH] = {};
+            GetWindowTextW(g_hEditKo, koPath, MAX_PATH);
+
+            wchar_t workDir[MAX_PATH] = {};
+            wcscpy_s(workDir, koPath);
+            wchar_t* lastSlash = wcsrchr(workDir, L'\\');
+            if (lastSlash) *lastSlash = 0;
+            else GetCurrentDirectoryW(MAX_PATH, workDir);
+
+            // Launcher.exe yolunu tespit et
+            wchar_t launcherPath[MAX_PATH] = {};
+            swprintf_s(launcherPath, L"%s\\Launcher.exe", workDir);
+
+            DWORD attr = GetFileAttributesW(launcherPath);
+            if (attr == INVALID_FILE_ATTRIBUTES)
+            {
+                Log(L"[-] HATA: Launcher.exe bulunamadi! Yol: %s", launcherPath);
+                MessageBoxW(hWnd, L"Launcher.exe oyun klasorunde bulunamadi!", L"Hata", MB_ICONERROR);
+                break;
+            }
+
+            wchar_t cmdLine[MAX_PATH * 2] = {};
+            swprintf_s(cmdLine, L"\"%s\"", launcherPath);
+
+            Log(L"==================================================");
+            Log(L"[*] Resmi Launcher baslatiliyor...");
+            Log(L"    -> Calistirilacak: %s", launcherPath);
+            Log(L"    -> Calisma Dizini: %s", workDir);
+
+            STARTUPINFOW si = { sizeof(si) };
+            PROCESS_INFORMATION pi = {};
+
+            if (CreateProcessW(launcherPath, cmdLine, nullptr, nullptr, FALSE, 0, nullptr, workDir, &si, &pi))
+            {
+                Log(L"[+] Launcher baslatildi! PID: %lu", pi.dwProcessId);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+
+                wchar_t dllPath[MAX_PATH] = {};
+                GetWindowTextW(g_hEditDll, dllPath, MAX_PATH);
+
+                // Oyun baslayana kadar arka planda izle
+                StartProcessWatcher(dllPath);
+            }
+            else
+            {
+                Log(L"[-] Launcher CreateProcess HATA kodu: %lu", GetLastError());
             }
         }
         else if (LOWORD(wParam) == IDC_BTN_LAUNCH)
@@ -367,28 +485,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             GetWindowTextW(g_hEditArgs, args, MAX_PATH);
             if (wcslen(args) == 0)
             {
-                wcscpy_s(args, L"1");
-                SetWindowTextW(g_hEditArgs, L"1");
+                DWORD myPid = GetCurrentProcessId();
+                swprintf_s(args, L"%lu", myPid);
+                SetWindowTextW(g_hEditArgs, args);
             }
 
-            // Calisma dizini (Working directory)
+            // Calisma dizini
             wchar_t workDir[MAX_PATH] = {};
             wcscpy_s(workDir, koPath);
             wchar_t* lastSlash = wcsrchr(workDir, L'\\');
-            if (lastSlash) 
-                *lastSlash = 0;
-            else 
-                GetCurrentDirectoryW(MAX_PATH, workDir);
+            if (lastSlash) *lastSlash = 0;
+            else GetCurrentDirectoryW(MAX_PATH, workDir);
 
-            // Nullparam cozumu: Komut satirina "KnightOnLine.exe" 1 parametresi eklenir
+            // procID parametresi ile komut satiri
             wchar_t cmdLine[MAX_PATH * 3] = {};
             swprintf_s(cmdLine, L"\"%s\" %s", koPath, args);
 
             Log(L"==================================================");
             Log(L"[*] CreateProcess: %s", koPath);
             Log(L"    -> Calisma Dizini       : %s", workDir);
-            Log(L"    -> Komut Satiri (Param) : %s", cmdLine);
-            Log(L"    -> Parametre            : %s (nullparam bypass)", args);
+            Log(L"    -> Komut Satiri         : %s", cmdLine);
+            Log(L"    -> Gecilen procID       : %s (!-(procID) kontrolunu asar)", args);
 
             STARTUPINFOW si = { sizeof(si) };
             PROCESS_INFORMATION pi = {};
@@ -413,8 +530,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 CloseHandle(pi.hProcess);
 
                 Log(L"[+] Oyun baslatildi. PID: %lu", g_koPid);
-                Log(L"[*] 'Inject Et' butonu aktiflestirildi.");
                 EnableWindow(g_hBtnInject, TRUE);
+
+                wchar_t dllPath[MAX_PATH] = {};
+                GetWindowTextW(g_hEditDll, dllPath, MAX_PATH);
+
+                LRESULT checked = SendMessageW(g_hChkAutoInject, BM_GETCHECK, 0, 0);
+                if (checked == BST_CHECKED && *dllPath)
+                {
+                    Log(L"[*] Otomatik Enjekte aktif. Zamanlama motoru baslatiliyor...");
+                    PerformInjectAsync(g_koPid, dllPath);
+                }
+                else
+                {
+                    Log(L"[*] Hazir. Enjeksiyon icin 'Manuel Inject Et' butonuna tiklayabilirsiniz.");
+                }
             }
             else
             {
@@ -474,7 +604,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLi
         CLASS_NAME,
         L"Knight Online XignCode3 Injector - BlackBone",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 615, 520,
+        CW_USEDEFAULT, CW_USEDEFAULT, 680, 560,
         nullptr, nullptr, hInstance, nullptr
     );
 
