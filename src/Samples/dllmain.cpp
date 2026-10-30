@@ -128,14 +128,14 @@ DWORD WINAPI WorkerThread(LPVOID lpParam)
 // ============================================
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
-    (void)lpReserved; // kullanilmiyor, warning engelle
+    (void)lpReserved; // warning C4100 sustur
+    (void)hModule;    // kullanilmiyorsa
 
     if (ul_reason_for_call == DLL_PROCESS_ATTACH)
     {
         DisableThreadLibraryCalls(hModule);
         CreateThread(nullptr, 0, [](LPVOID param) -> DWORD {
-            (void)param; // lambda warning engelle (asagida cast ediyoruz)
-
+            (void)param; // warning sustur
             HMODULE hSelf = (HMODULE)param;
             Sleep(2500);
             SelfUnlinkPEB(hSelf);

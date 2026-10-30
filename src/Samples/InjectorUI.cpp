@@ -1,6 +1,4 @@
 // InjectorUI.cpp
-// Blackbone tabanli Knight Online XignCode3 Bypass Injector
-// Win32 UI + Oto Launch + Timing + Manual Map
 
 #include <windows.h>
 #include <windowsx.h>
@@ -9,15 +7,21 @@
 #include <thread>
 #include <chrono>
 
+// BLACKBONE FIX: MMap.h icinde Process& kullaniliyor ama forward decl yok
+namespace blackbone { class Process; }
+
 #include "BlackBone/Process/Process.h"
 #include "BlackBone/ManualMap/MMap.h"
-#include "ManualMapXign.h"
 
 #pragma comment(lib, "comdlg32.lib")
 #pragma comment(lib, "Blackbone.lib")
 
 using namespace blackbone;
 
+bool WaitForModuleXign(Process& proc, const wchar_t* modName, DWORD timeoutMs);
+bool SuspendProcessXign(Process& proc);
+bool ResumeProcessXign(Process& proc);
+bool RemoteUnlinkModule(Process& proc, uintptr_t modBase, const wchar_t* tag);
 // ==================== UI IDs ====================
 #define IDC_EDIT_KO_PATH    101
 #define IDC_BTN_BROWSE_KO   102
@@ -118,10 +122,14 @@ bool PerformInject(DWORD pid, const std::wstring& dllPath)
     {
         Log(L"[!] x3.xem base bulunamadi, unlink atlaniyor.");
     }
-
     // ---- TIMING 4: Manual Map inject ----
     Log(L"[*] Timing: Manual Map inject: %s", dllPath.c_str());
-    auto image = proc.mmap().MapImage(dllPath.c_str(), eLoadFlags::WipeHeader | eLoadFlags::HideVAD | eLoadFlags::NoThreads);
+
+    auto image = proc.mmap().MapImage(
+        dllPath.c_str(),
+        eLoadFlags::WipeHeader | eLoadFlags::HideVAD
+    );
+
     if (!image)
     {
         Log(L"[-] HATA: MapImage basarisiz. Status=0x%08X", image.status);
@@ -129,8 +137,12 @@ bool PerformInject(DWORD pid, const std::wstring& dllPath)
         return false;
     }
 
-    uintptr_t imgBase = static_cast<uintptr_t>((*image)->baseAddress);
+    // call_result_t::result() fonksiyonu cagriliyor
+    auto modInfo = image.result();
+    uintptr_t imgBase = static_cast<uintptr_t>(modInfo->baseAddress);
+
     Log(L"[+] Manual Map OK. Base=0x%p", (void*)imgBase);
+
 
     // ---- TIMING 5: DLL PEB'den gizle ----
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
