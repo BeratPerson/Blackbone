@@ -25,7 +25,8 @@
                                 // dll-interface struct
 # pragma warning(disable: 4355) // this used in base member initializer list
 # pragma warning(disable: 4480) // specifying underlying type for enum
-# pragma warning(disable: 4800) // forcing value to bool 'true' or 'false'
+# pragma warning(disable: 4800)
+# pragma warning(disable: 5054) // forcing value to bool 'true' or 'false'
 
 // Rename symbols.
 # if !defined(vsnprintf)
