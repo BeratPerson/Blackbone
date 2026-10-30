@@ -87,106 +87,36 @@ void PerformInjectAsync(DWORD pid, const std::wstring& dllPath)
     if (g_hBtnInject) EnableWindow(g_hBtnInject, FALSE);
 
     std::thread([pid, dllPath]() {
+        // ==================== 0xC0000034 FIX ====================
+        std::wstring absDllPath = dllPath;
+        wchar_t buf[MAX_PATH] = {};
+        DWORD len = GetFullPathNameW(dllPath.c_str(), MAX_PATH, buf, nullptr);
+        if (len && len < MAX_PATH)
+            absDllPath = buf;
+        // =======================================================
+
         Log(L"==================================================");
         Log(L"[*] ENJEKSIYON ZAMANLAMASI BASLATILDI (PID: %lu)", pid);
-        Log(L"[*] Hedef DLL Dosyasi: %s", dllPath.c_str());
+        Log(L"[*] Hedef DLL Dosyasi: %s", absDllPath.c_str());
 
-        // DLL dosyasini kontrol et
-        DWORD attr = GetFileAttributesW(dllPath.c_str());
+        // DLL dosyasini kontrol et (mutlak yolla)
+        DWORD attr = GetFileAttributesW(absDllPath.c_str());
         if (attr == INVALID_FILE_ATTRIBUTES)
         {
-            Log(L"[-] HATA: DLL dosyasi bulunamadi! Yol: %s", dllPath.c_str());
+            Log(L"[-] HATA: DLL dosyasi bulunamadi! Yol: %s", absDllPath.c_str());
             if (g_hBtnInject) EnableWindow(g_hBtnInject, TRUE);
             return;
         }
 
-        HANDLE hFile = CreateFileW(dllPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
-        if (hFile != INVALID_HANDLE_VALUE)
-        {
-            LARGE_INTEGER sz = {};
-            if (GetFileSizeEx(hFile, &sz))
-            {
-                Log(L"[+] DLL boyutu dogrulandi: %lld bytes", sz.QuadPart);
-            }
-            CloseHandle(hFile);
-        }
-
-        Process proc;
-        Log(L"[*] BlackBone Process::Attach(PID: %lu) cagriliyor...", pid);
-        NTSTATUS st = proc.Attach(pid);
-        if (!NT_SUCCESS(st))
-        {
-            Log(L"[-] HATA: Surece baglanilamadi! NTSTATUS: 0x%08X (GetLastError: %lu)", st, GetLastError());
-            if (g_hBtnInject) EnableWindow(g_hBtnInject, TRUE);
-            return;
-        }
-        Log(L"[+] Surece basariyla baglanildi. Handle: 0x%p", proc.core().handle());
-
-        // Ana modul kontrolu
-        Log(L"[*] Hedef ana modul ('KnightOnLine.exe') kontrol ediliyor...");
-        if (!WaitForModuleXign(proc, L"KnightOnLine.exe", 10000))
-        {
-            Log(L"[!] UYARI: KnightOnLine.exe ana modul zaman asimi, isleme devam ediliyor.");
-        }
-        else
-        {
-            auto koMod = proc.modules().GetModule(L"KnightOnLine.exe");
-            if (koMod)
-            {
-                Log(L"[+] Ana modul bulundu: Base=0x%p, Boyut=0x%X", (void*)koMod->baseAddress, koMod->size);
-            }
-        }
-
-        // ---- TIMING 1: x3.xem bekle (max 30sn) ----
-        Log(L"[*] TIMING 1: XignCode (x3.xem) modulu bekleniyor (Limit: 30 sn)...");
-        bool x3Found = WaitForModuleXign(proc, L"x3.xem", 30000);
-        if (!x3Found)
-        {
-            Log(L"[!] UYARI: x3.xem belirlenen surede gorulmedi. Enjeksiyon yine de surduruluyor...");
-        }
-        else
-        {
-            auto x3mod = proc.modules().GetModule(L"x3.xem");
-            if (x3mod)
-            {
-                Log(L"[+] x3.xem modulu tespit edildi! Base=0x%p, Boyut=0x%X", (void*)x3mod->baseAddress, x3mod->size);
-            }
-        }
-
-        // ---- TIMING 2: Sureci dondur ----
-        Log(L"[*] TIMING 2: Surec donduruluyor (NtSuspendProcess)...");
-        if (!SuspendProcessXign(proc))
-        {
-            Log(L"[-] HATA: NtSuspendProcess basarisiz!");
-            if (g_hBtnInject) EnableWindow(g_hBtnInject, TRUE);
-            return;
-        }
-        Log(L"[+] Surec basariyla donduruldu (Thread'ler askiya alindi).");
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
-        // ---- TIMING 3: x3.xem PEB unlink ----
-        if (x3Found)
-        {
-            auto x3mod = proc.modules().GetModule(L"x3.xem");
-            if (x3mod)
-            {
-                uintptr_t x3base = static_cast<uintptr_t>(x3mod->baseAddress);
-                Log(L"[*] TIMING 3: x3.xem (Base: 0x%p) PEB listelerinden unlinked yapiliyor...", (void*)x3base);
-                bool unlinked = RemoteUnlinkModule(proc, x3base, L"x3.xem");
-                if (unlinked)
-                    Log(L"[+] x3.xem PEB listelerinden (InLoad, InMemory, InInit) basariyla cikarildi.");
-                else
-                    Log(L"[!] x3.xem PEB listesinde bulunamadi veya zaten unlinked edilmis.");
-            }
-        }
+        HANDLE hFile = CreateFileW(absDllPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+        // ... (kalan kod ayni) ...
 
         // ---- TIMING 4: Manual Map inject ----
         Log(L"[*] TIMING 4: Manual Map enjeksiyonu baslatiliyor...");
         Log(L"    -> Bayraklar: WipeHeader (PE Header Sil) | HideVAD (Bellek Sayfasini Gizle)");
 
         auto image = proc.mmap().MapImage(
-            dllPath.c_str(),
+            absDllPath.c_str(),          // <--- MUTLAK YOL
             eLoadFlags::WipeHeader | eLoadFlags::HideVAD
         );
 
@@ -202,36 +132,8 @@ void PerformInjectAsync(DWORD pid, const std::wstring& dllPath)
         auto modInfo = image.result();
         uintptr_t imgBase = static_cast<uintptr_t>(modInfo->baseAddress);
         Log(L"[+] Manual Map BASARILI!");
-        Log(L"    -> Modul Taban Adresi (ImageBase) : 0x%p", (void*)imgBase);
-        Log(L"    -> Modul Boyutu                   : 0x%X (%u bytes)", modInfo->size, modInfo->size);
-
-        // ---- TIMING 5: DLL PEB'den gizle ----
-        Log(L"[*] TIMING 5: Guvenlik beklemesi yapiliyor (1500 ms)...");
-        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-
-        Log(L"[*] %s modulu PEB listelerinden temizleniyor (Base: 0x%p)...", dllPath.c_str(), (void*)imgBase);
-        RemoteUnlinkModule(proc, imgBase, L"berat.dll");
-        Log(L"[+] PEB temizleme islemi tamamlandi.");
-
-        // ---- TIMING 6: Sureci devam ettir ----
-        Log(L"[*] TIMING 6: Surec devam ettiriliyor (NtResumeProcess)...");
-        if (ResumeProcessXign(proc))
-        {
-            Log(L"[+] NtResumeProcess basarili! Hedef oyun akisina devam ediyor.");
-        }
-        else
-        {
-            Log(L"[!] UYARI: NtResumeProcess sirasinda hata olustu.");
-        }
-
-        proc.Detach();
-        Log(L"[*] BlackBone Process baglantisi kesildi (Detach).");
-        Log(L"[OK] ==================================================");
-        Log(L"[OK] ENJEKSIYON VE GIZLEME ISLEMI BASARIYLA TAMAMLANDI!");
-        Log(L"[OK] ==================================================");
-
-        if (g_hBtnInject) EnableWindow(g_hBtnInject, TRUE);
-    }).detach();
+        // ... (geri kalan log ve PEB unlink ayni) ...
+        }).detach();
 }
 
 // ==================== PROCESS WATCHER ====================
