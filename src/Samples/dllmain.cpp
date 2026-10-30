@@ -4,14 +4,24 @@
 #include <cstdio>
 
 // ========== Ileri Bildirimler ==========
-void WorkerThread(HMODULE hSelf);
+void WorkerThread(HMODULE hSelf)
+{
+    // Kullanici modu calisma mantigi buraya gelir.
+    (void)hSelf;
+}
 
 // ========== NT Yapilari ==========
-typedef struct _UNICODE_STRING {
-    USHORT Length;
-    USHORT MaximumLength;
-    PWSTR  Buffer;
-} UNICODE_STRING, * PUNICODE_STRING;
+typedef struct _PEB_LDR_DATA_FULL {
+    ULONG Length;
+    BOOLEAN Initialized;
+    PVOID SsHandle;
+    LIST_ENTRY InLoadOrderModuleList;
+    LIST_ENTRY InMemoryOrderModuleList;
+    LIST_ENTRY InInitializationOrderModuleList;
+    PVOID EntryInProgress;
+    BOOLEAN ShutdownInProgress;
+    HANDLE ShutdownThreadId;
+} PEB_LDR_DATA_FULL, * PPEB_LDR_DATA_FULL;
 
 typedef struct _LDR_DATA_TABLE_ENTRY_FULL {
     LIST_ENTRY InLoadOrderLinks;
@@ -42,7 +52,8 @@ static void SelfUnlinkPEB(HMODULE hSelf)
 
     if (!peb || !peb->Ldr) return;
 
-    PLIST_ENTRY listHead = &peb->Ldr->InLoadOrderModuleList;
+    PPEB_LDR_DATA_FULL ldr = (PPEB_LDR_DATA_FULL)peb->Ldr;
+    PLIST_ENTRY listHead = &ldr->InLoadOrderModuleList;
     PLIST_ENTRY entry = listHead->Flink;
 
     while (entry != listHead)

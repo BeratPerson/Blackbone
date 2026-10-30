@@ -188,20 +188,6 @@ void PerformInjectAsync(DWORD pid, const std::wstring& dllPath)
                     Log(L"[!] x3.xem PEB listesinde bulunamadi veya zaten unlinked edilmis.");
             }
         }
-        Log(L"[*] berat.dll PEB unlink sonrasi dogrulama...");
-        bool foundAfterUnlink = false;
-        for (auto& mod : proc.modules().GetAllModules())
-        {
-            if (mod.name == L"berat.dll")
-            {
-                foundAfterUnlink = true;
-                break;
-            }
-        }
-        if (foundAfterUnlink)
-            Log(L"[!] UYARI: berat.dll hala PEB'de gorunuyor!");
-        else
-            Log(L"[+] berat.dll PEB'de artik gorunmuyor.");
         // x3.xem PEB'den cikarildi. Manual Map sirasinda RPC thread'inin calisabilmesi
         // icin sureci devam ettiriyoruz.
         Log(L"[*] Surec devam ettiriliyor (Manual Map RPC calismasi icin)...");
