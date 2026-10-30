@@ -1,7 +1,6 @@
 // InjectorUI.cpp
 // Blackbone tabanli Knight Online XignCode3 Bypass Injector
 // Win32 UI + Oto Launch + Timing + Manual Map
-// HATALAR DUZELTILMIS: baseAddress erisimi, NoThread kaldirildi, cast'ler eklendi
 
 #include <windows.h>
 #include <windowsx.h>
@@ -12,6 +11,7 @@
 
 #include "BlackBone/Process/Process.h"
 #include "BlackBone/ManualMap/MMap.h"
+#include "ManualMapXign.h"
 
 #pragma comment(lib, "comdlg32.lib")
 #pragma comment(lib, "Blackbone.lib")
@@ -71,94 +71,7 @@ std::wstring BrowseFile(HWND hOwner, const wchar_t* filter, const wchar_t* title
     return L"";
 }
 
-// ==================== WAIT FOR MODULE ====================
-bool WaitForModuleXign(Process& proc, const wchar_t* modName, DWORD timeoutMs)
-{
-    auto start = std::chrono::steady_clock::now();
-    while (true)
-    {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start).count();
-        if (elapsed > (long long)timeoutMs) return false;
-
-        if (proc.modules().GetModule(modName))
-            return true;
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    }
-}
-
-// ==================== REMOTE PEB UNLINK ====================
-bool RemoteUnlinkModule(Process& proc, uintptr_t modBase, const wchar_t* tag)
-{
-    if (!modBase) return false;
-
-    PROCESS_BASIC_INFORMATION pbi = {};
-    ULONG rl = 0;
-    static auto NtQIP = (NTSTATUS(NTAPI*)(HANDLE, ULONG, PVOID, ULONG, PULONG))GetProcAddress(
-        GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationProcess");
-
-    if (!NtQIP || NtQIP(proc.core().handle(), 0, &pbi, sizeof(pbi), &rl) != 0 || !pbi.PebBaseAddress)
-        return false;
-
-    const DWORD PebLdrOffset = 0x0C; // x86
-    uintptr_t ldrPtr = 0;
-    SIZE_T rd = 0;
-
-    if (!ReadProcessMemory(proc.core().handle(), (LPCVOID)((uintptr_t)pbi.PebBaseAddress + PebLdrOffset),
-        &ldrPtr, sizeof(ldrPtr), &rd) || !ldrPtr)
-        return false;
-
-    struct LdrCtx { DWORD ListOff; DWORD EntryOff; const wchar_t* Name; };
-    LdrCtx lists[] = {
-        { 0x0C, 0x00, L"InLoadOrder" },
-        { 0x14, 0x08, L"InMemoryOrder" },
-        { 0x1C, 0x10, L"InInitOrder" }
-    };
-
-    bool any = false;
-    for (const auto& ctx : lists)
-    {
-        uintptr_t listHead = ldrPtr + ctx.ListOff;
-        uintptr_t current = 0;
-
-        if (!ReadProcessMemory(proc.core().handle(), (LPCVOID)listHead, &current, sizeof(current), &rd) || !current)
-            continue;
-
-        int guard = 0;
-        while (current != listHead && current != 0 && guard++ < 512)
-        {
-            uintptr_t entryBase = current - ctx.EntryOff;
-            uintptr_t readBase = 0;
-            if (!ReadProcessMemory(proc.core().handle(), (LPCVOID)(entryBase + 0x18), &readBase, sizeof(readBase), &rd))
-                break;
-
-            if (readBase == modBase)
-            {
-                uintptr_t flink = 0, blink = 0;
-                ReadProcessMemory(proc.core().handle(), (LPCVOID)(current + 0), &flink, sizeof(flink), &rd);
-                ReadProcessMemory(proc.core().handle(), (LPCVOID)(current + 4), &blink, sizeof(blink), &rd);
-
-                SIZE_T bw = 0;
-                WriteProcessMemory(proc.core().handle(), (LPVOID)(blink + 0), &flink, sizeof(flink), &bw);
-                WriteProcessMemory(proc.core().handle(), (LPVOID)(flink + 4), &blink, sizeof(blink), &bw);
-
-                DWORD zero[2] = { 0,0 };
-                WriteProcessMemory(proc.core().handle(), (LPVOID)current, zero, sizeof(zero), &bw);
-
-                any = true;
-                Log(L"    [+] %s <-- %s listesinden cikarildi", tag, ctx.Name);
-                break;
-            }
-
-            if (!ReadProcessMemory(proc.core().handle(), (LPCVOID)(current + 0), &current, sizeof(current), &rd))
-                break;
-        }
-    }
-    return any;
-}
-
-// ==================== PERFORM INJECT (Timing Dahil) ====================
+// ==================== PERFORM INJECT ====================
 bool PerformInject(DWORD pid, const std::wstring& dllPath)
 {
     Log(L"==============================");
@@ -185,9 +98,7 @@ bool PerformInject(DWORD pid, const std::wstring& dllPath)
 
     // ---- TIMING 2: Sureci dondur ----
     Log(L"[*] Timing: NtSuspendProcess");
-    static auto NtSuspendProcess = (NTSTATUS(NTAPI*)(HANDLE))GetProcAddress(
-        GetModuleHandleW(L"ntdll.dll"), "NtSuspendProcess");
-    if (NtSuspendProcess && !NT_SUCCESS(NtSuspendProcess(proc.core().handle())))
+    if (!SuspendProcessXign(proc))
     {
         Log(L"[-] HATA: Suspend basarisiz.");
         return false;
@@ -209,25 +120,17 @@ bool PerformInject(DWORD pid, const std::wstring& dllPath)
     }
 
     // ---- TIMING 4: Manual Map inject ----
-    // NOT: Blackbone'un standart surumunde 'NoThread' enumu yoktur.
-    // MapImage zaten DLL_PROCESS_ATTACH icin remote thread olusturur.
     Log(L"[*] Timing: Manual Map inject: %s", dllPath.c_str());
-    auto image = proc.mmap().MapImage(dllPath.c_str(), eLoadFlags::WipeHeader | eLoadFlags::HideVAD);
+    auto image = proc.mmap().MapImage(dllPath.c_str(), eLoadFlags::WipeHeader | eLoadFlags::HideVAD | eLoadFlags::NoThreads);
     if (!image)
     {
         Log(L"[-] HATA: MapImage basarisiz. Status=0x%08X", image.status);
-        static auto NtResumeProcess = (NTSTATUS(NTAPI*)(HANDLE))GetProcAddress(
-            GetModuleHandleW(L"ntdll.dll"), "NtResumeProcess");
-        if (NtResumeProcess) NtResumeProcess(proc.core().handle());
+        ResumeProcessXign(proc);
         return false;
     }
 
-    // call_result_t<ModuleDataPtr>.result -> shared_ptr<ModuleData>
-    uintptr_t imgBase = static_cast<uintptr_t>(image.result->baseAddress);
+    uintptr_t imgBase = static_cast<uintptr_t>((*image)->baseAddress);
     Log(L"[+] Manual Map OK. Base=0x%p", (void*)imgBase);
-
-    // Blackbone MapImage DllMain'i calistirdigi icin tekrar ExecDirect GEREKMEZ.
-    // Iki kez calistirmak crash / double-init hatasi verir.
 
     // ---- TIMING 5: DLL PEB'den gizle ----
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
@@ -235,9 +138,7 @@ bool PerformInject(DWORD pid, const std::wstring& dllPath)
 
     // ---- TIMING 6: Sureci devam ettir ----
     Log(L"[*] Timing: NtResumeProcess");
-    static auto NtResumeProcess = (NTSTATUS(NTAPI*)(HANDLE))GetProcAddress(
-        GetModuleHandleW(L"ntdll.dll"), "NtResumeProcess");
-    if (NtResumeProcess) NtResumeProcess(proc.core().handle());
+    ResumeProcessXign(proc);
 
     Log(L"[+] INJECT TAMAMLANDI.");
     proc.Detach();
@@ -368,7 +269,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             std::thread([hWnd, path = std::wstring(dllPath)]() mutable {
                 PerformInject(g_koPid, path);
                 PostMessageW(hWnd, WM_APP + 1, 0, 0);
-                }).detach();
+            }).detach();
         }
         break;
     }
