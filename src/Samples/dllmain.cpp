@@ -1,4 +1,4 @@
-#include <windows.h>
+﻿#include <windows.h>
 #include <winternl.h>
 #include <cstdint>
 #include <cstdio>
@@ -6,8 +6,15 @@
 // ========== Ileri Bildirimler ==========
 void WorkerThread(HMODULE hSelf)
 {
-    // Kullanici modu calisma mantigi buraya gelir.
-    (void)hSelf;
+    Sleep(3000);
+
+    // Eğer oyun bu MessageBox'u gösteriyorsa ve kapanmıyorsa,
+    // en azından XignCode DLL'in varlığından dolayı terminate atmıyor demektir.
+    MessageBoxA(0, "DLL calisiyor - Test 1", "BYPASS", MB_OK);
+
+    // Biraz daha bekle ve stabiliteyi kontrol et
+    Sleep(10000);
+    MessageBoxA(0, "10 saniye gecti - Test 2", "BYPASS", MB_OK);
 }
 
 // ========== NT Yapilari ==========
