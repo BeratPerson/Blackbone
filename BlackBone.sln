@@ -5,6 +5,9 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BlackBone", "src\BlackBone\BlackBone.vcxproj", "{A2C53563-46F5-4D87-903F-3F1F2FDB2DEB}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Samples", "src\Samples\Samples.vcxproj", "{D31B07B5-C75F-4382-B07F-D95922764BD7}"
+	ProjectSection(ProjectDependencies) = postProject
+		{5F86549C-CF6F-4C31-AFCE-3F0CE7FD10C7} = {5F86549C-CF6F-4C31-AFCE-3F0CE7FD10C7}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "berat", "src\berat\berat.vcxproj", "{C7E726DF-334F-4E38-8B77-4933E1BC8841}"
 EndProject

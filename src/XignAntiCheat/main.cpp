@@ -2,6 +2,9 @@
 #include <iomanip>
 #include <cstring>
 #include <vector>
+#include <string>
+#include <fstream>
+#include <stdexcept>
 
 #include "XignDefs.hpp"
 #include "XignTypes.hpp"
@@ -15,13 +18,12 @@ using namespace Xign;
 static void PrintBanner()
 {
     std::cout << R"(
-__  ___                _   _      ___   ___    _    ____      _   
-\ \/ / |__   __ _ _ __| |_(_)_ __/ _ \ / _ \  / \  |___ \ ___| |_ 
- \  /| '_ \ / _` | '__| __| | '__| | | | | | |/ _ \   __) / __| __|
- /  \| | | | (_| | |  | |_| | |  | |_| | |_| / ___ \ / __/\__ \ |_ 
-/_/\_\_| |_|\__,_|_|   \__|_|_|   \___/ \___/_/   \_\_____|___/\__|
-    XIGNCODE3 Blackbone Research Suite v3.1
-    Dump-verified Ordinal-4 | NtCreateFile+EA Auth | AxHunter Protocol
+ _           _        _   
+| |__   __ _| |_ _ __(_)_ __   __ _ 
+| '_ \ / _` | __| '__| | '_ \ / _` |
+| |_) | (_| | |_| |  | | | | | (_| |
+|_.__/ \__,_|\__|_|  |_|_| |_|\__, |
+                               |___/ 
 )" << '\n';
 }
 
@@ -38,9 +40,10 @@ static void SimulateOrdinal4(uint64_t base)
 #ifdef _WIN32
         return *reinterpret_cast<uint64_t*>(base + rva);
 #else
+        (void)rva;
         return 0;
 #endif
-    };
+        };
 
     uint64_t g_pCoreInterface = readPtr(X3_G_COREIFACE_RVA);
     std::cout << "    g_pCoreInterface = 0x" << g_pCoreInterface << '\n';
@@ -76,8 +79,8 @@ static void SimulateOrdinal4(uint64_t base)
 static void TestLcg()
 {
     std::cout << "\n[*] === LCG Roundtrip ===\n";
-    const char* msg = "AXHUNTER_TEST_PACKET_DATA_FILLER";
-    size_t len = std::strlen(msg);
+    const char* msg = "berat_TEST_PACKET_DATA_FILLER";
+    std::size_t len = std::strlen(msg);
     uint32_t seed = XHUNTER2_SEED_KEY;
     auto enc = LcgKeystream::Crypt(reinterpret_cast<const uint8_t*>(msg), len, seed);
     auto dec = LcgKeystream::Crypt(enc.data(), enc.size(), seed);
@@ -90,7 +93,7 @@ static void TestPacket()
 {
     std::cout << "\n[*] === Packet Builder ===\n";
     auto pkt = AxHunterPacketBuilder::BuildRequest(CMD_OPEN_PROC, 0xDEADBEEFCAFE0000ULL);
-    std::cout << "    Size:   " << pkt.size() << " (exp " << XH2_REQ_SZ << ")\n";
+    std::cout << "    Size:   " << std::dec << pkt.size() << " (exp " << XH2_REQ_SZ << ")\n";
     std::cout << "    Magic:  0x" << std::hex << *reinterpret_cast<uint32_t*>(&pkt[28]) << '\n';
     std::cout << "    Seed:   0x" << *reinterpret_cast<uint32_t*>(&pkt[32]) << '\n';
     std::cout << "    Opcode: " << std::dec << *reinterpret_cast<uint32_t*>(&pkt[XH2_OPCODE_OFF]) << '\n';
@@ -98,16 +101,16 @@ static void TestPacket()
 
 static void ShowConstants()
 {
-    std::cout << "\n[*] === xhunter2.sys Command Table ===\n";
-    std::cout << "    CMD_REGISTER     = " << CMD_REGISTER << '\n';
-    std::cout << "    CMD_FLAG_30      = " << CMD_FLAG_30 << '\n';
-    std::cout << "    CMD_SET_FLAGS    = " << CMD_SET_FLAGS << '\n';
-    std::cout << "    CMD_OPEN_PROC    = " << CMD_OPEN_PROC << '\n';
-    std::cout << "    CMD_READ_MEM     = " << CMD_READ_MEM << '\n';
-    std::cout << "    CMD_QUERY_PROC   = " << CMD_QUERY_PROC << '\n';
-    std::cout << "    CMD_HANDLE_STOMP = " << CMD_HANDLE_STOMP << '\n';
-    std::cout << "    CMD_INJECT_INIT  = " << CMD_INJECT_INIT << '\n';
-    std::cout << "    CMD_INJECT       = " << CMD_INJECT << '\n';
+    std::cout << "\n[*] === berat.sys Command Table ===\n";
+    std::cout << "    CMD_REGISTER     = 0x" << std::hex << CMD_REGISTER << '\n';
+    std::cout << "    CMD_FLAG_30      = 0x" << CMD_FLAG_30 << '\n';
+    std::cout << "    CMD_SET_FLAGS    = 0x" << CMD_SET_FLAGS << '\n';
+    std::cout << "    CMD_OPEN_PROC    = 0x" << CMD_OPEN_PROC << '\n';
+    std::cout << "    CMD_READ_MEM     = 0x" << CMD_READ_MEM << '\n';
+    std::cout << "    CMD_QUERY_PROC   = 0x" << CMD_QUERY_PROC << '\n';
+    std::cout << "    CMD_HANDLE_STOMP = 0x" << CMD_HANDLE_STOMP << '\n';
+    std::cout << "    CMD_INJECT_INIT  = 0x" << CMD_INJECT_INIT << '\n';
+    std::cout << "    CMD_INJECT       = 0x" << CMD_INJECT << std::dec << '\n';
 }
 
 int main(int argc, char** argv)
@@ -116,35 +119,65 @@ int main(int argc, char** argv)
 
     if (argc < 2) {
         std::cerr << "Usage:\n"
-                  << "  " << argv[0] << " ordinal4 <baseaddr>\n"
-                  << "  " << argv[0] << " lcg\n"
-                  << "  " << argv[0] << " packet\n"
-                  << "  " << argv[0] << " constants\n"
-                  << "  " << argv[0] << " auth <wbmf.dll>   (requires real wbmf_module.dll)\n";
+            << "  " << argv[0] << " ordinal4 <baseaddr>\n"
+            << "  " << argv[0] << " lcg\n"
+            << "  " << argv[0] << " packet\n"
+            << "  " << argv[0] << " constants\n"
+            << "  " << argv[0] << " auth <wbmf.dll>   (requires real wbmf_module.dll)\n";
         return 1;
     }
 
     std::string mode(argv[1]);
 
-    if (mode == "ordinal4" && argc > 2) {
-        uint64_t base = std::stoull(argv[2], nullptr, 0);
-        SimulateOrdinal4(base);
+    try {
+        if (mode == "ordinal4" && argc > 2) {
+            uint64_t base = std::stoull(argv[2], nullptr, 0);
+            SimulateOrdinal4(base);
+        }
+        else if (mode == "lcg") {
+            TestLcg();
+        }
+        else if (mode == "packet") {
+            TestPacket();
+        }
+        else if (mode == "constants") {
+            ShowConstants();
+        }
+        else if (mode == "auth" && argc > 2) {
+            std::cout << "[*] Auth mode: loading " << argv[2] << " as wbmf_module.dll bytes...\n";
+
+            std::ifstream file(argv[2], std::ios::binary | std::ios::ate);
+            if (!file.is_open()) {
+                std::cerr << "[!] Failed to open file: " << argv[2] << '\n';
+                return 1;
+            }
+
+            auto size = file.tellg();
+            file.seekg(0, std::ios::beg);
+
+            std::vector<uint8_t> bytes(static_cast<std::size_t>(size));
+            if (!file.read(reinterpret_cast<char*>(bytes.data()), size)) {
+                std::cerr << "[!] Failed to read file.\n";
+                return 1;
+            }
+            file.close();
+
+            Xhunter2Driver driver;
+            if (driver.AuthenticateAndOpen(bytes)) {
+                std::cout << "[+] Auth simulation completed successfully.\n";
+            }
+            else {
+                std::cerr << "[!] Auth simulation failed.\n";
+                return 1;
+            }
+        }
+        else {
+            std::cerr << "[!] Unknown mode or insufficient arguments.\n";
+            return 1;
+        }
     }
-    else if (mode == "lcg") {
-        TestLcg();
-    }
-    else if (mode == "packet") {
-        TestPacket();
-    }
-    else if (mode == "constants") {
-        ShowConstants();
-    }
-    else if (mode == "auth" && argc > 2) {
-        std::cerr << "[*] Auth mode: load " << argv[2] << " as wbmf_module.dll bytes, then NtCreateFile+EA.\n";
-        // TODO: Read file bytes, call Xhunter2Driver::AuthenticateAndOpen
-    }
-    else {
-        std::cerr << "[!] Unknown mode.\n";
+    catch (const std::exception& e) {
+        std::cerr << "[!] Exception: " << e.what() << '\n';
         return 1;
     }
 
