@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <memory>
 #include <cstdint>
 
 namespace Xign
@@ -17,21 +18,19 @@ namespace Xign
         uint32_t PayloadLen;
     };
 
-    struct Xhunter2ObConfig
+    struct AxHunterRequestLayout
     {
-        uint64_t PsProcessTypePtr;
-        uint64_t PsThreadTypePtr;
-        uint32_t Altitude;
-        uint8_t  Padding[20];
+        // Bytes 0-23:   Unknown / padding (zeroed by driver)
+        // Bytes 24-27:  REQ_SZ as u32  (0x4A0 = 1184)
+        // Bytes 28-31:  MAGIC_XOR ^ SEED_KEY
+        // Bytes 32-35:  SEED_KEY
+        // Bytes 36-39:  Opcode (CMD_REGISTER etc.)
+        // Bytes 40-47:  Response output pointer
+        // Bytes 48-583: WBCC blob (536 bytes)
+        // Bytes 584+:   Arguments (vary by opcode)
+        uint8_t Raw[XH2_REQ_SZ];
     };
-
-    struct ExportEntry
-    {
-        uint16_t Ordinal;
-        uint32_t Rva;
-        uint32_t Va;
-        bool     IsActive;
-    };
+#pragma pack(pop)
 
     struct PeSectionInfo
     {
@@ -44,27 +43,18 @@ namespace Xign
         double Entropy;
     };
 
-    struct AxHunterFrame
+    struct ExportEntry
     {
-        // Layout matching AxHunter proto.rs build_req()
-        uint8_t  Raw[XH2_REQ_SZ];
-    };
-#pragma pack(pop)
-
-    enum class X3Command : uint16_t
-    {
-        Heartbeat = 0x22,
-        HwidScan = 0x23,
-        WindowScan = 0x24,
-        CodeIntegrity = 0x25
+        uint16_t Ordinal;
+        uint32_t Rva;
+        uint32_t Va;
+        bool IsActive;
     };
 
     enum class XignDriverVersion : uint8_t
     {
         Xhunter1 = 1,
         Xhunter2 = 2,
-        Unknown = 0
+        Unknown  = 0
     };
-
-    using X3DispatchHandler = std::function<bool(const uint8_t* payload, size_t len, std::vector<uint8_t>& response)>;
 }

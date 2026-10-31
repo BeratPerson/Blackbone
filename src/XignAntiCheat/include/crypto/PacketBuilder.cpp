@@ -1,21 +1,16 @@
-#include "crypto/PacketBuilder.hpp"
+#include "PacketBuilder.hpp"
 #include "XignDefs.hpp"
 #include <cstring>
 
 namespace Xign
 {
-    std::vector<uint8_t> AxHunterPacketBuilder::BuildRequest(uint32_t opcode, uint64_t respPtr, uint32_t seed)
+    std::vector<uint8_t> AxHunterPacketBuilder::BuildRequest(uint32_t opcode, uint64_t respPtr)
     {
         std::vector<uint8_t> req(XH2_REQ_SZ, 0);
-        // offset 24..28: REQ_SZ as u32
         *reinterpret_cast<uint32_t*>(&req[24]) = static_cast<uint32_t>(XH2_REQ_SZ);
-        // offset 28..32: MAGIC_XOR ^ SEED_KEY
-        *reinterpret_cast<uint32_t*>(&req[28]) = XHUNTER2_MAGIC_XOR ^ seed;
-        // offset 32..36: SEED_KEY
-        *reinterpret_cast<uint32_t*>(&req[32]) = seed;
-        // offset 36..40: opcode
+        *reinterpret_cast<uint32_t*>(&req[28]) = XHUNTER2_MAGIC_XOR ^ XHUNTER2_SEED_KEY;
+        *reinterpret_cast<uint32_t*>(&req[32]) = XHUNTER2_SEED_KEY;
         *reinterpret_cast<uint32_t*>(&req[XH2_OPCODE_OFF]) = opcode;
-        // offset 40..48: response pointer
         std::memcpy(&req[XH2_RESP_PTR_OFF], &respPtr, sizeof(respPtr));
         return req;
     }

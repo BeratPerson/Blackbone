@@ -1,13 +1,10 @@
-#include "crypto/LcgCrypto.hpp"
+#include "LcgCrypto.hpp"
 #include "XignDefs.hpp"
-#include <cstring>
 
 namespace Xign
 {
     LcgKeystream::LcgKeystream(uint32_t seed)
     {
-        // AxHunter verified equivalent:
-        // s = 1864026567u32.wrapping_sub(1640531535u32.wrapping_mul(sk ^ 0x7B85F243));
         m_state = LCG_INIT_ADDEND - (LCG_INIT_MUL * (seed ^ LCG_XOR_KEY));
     }
 
@@ -26,7 +23,8 @@ namespace Xign
     {
         std::vector<uint8_t> out;
         out.reserve(length);
-        for (size_t i = 0; i < length; ++i) out.push_back(NextByte());
+        for (size_t i = 0; i < length; ++i)
+            out.push_back(NextByte());
         return out;
     }
 
@@ -36,7 +34,8 @@ namespace Xign
         LcgKeystream ks(seed);
         std::vector<uint8_t> out;
         out.reserve(len);
-        for (size_t i = 0; i < len; ++i) out.push_back(data[i] ^ ks.NextByte());
+        for (size_t i = 0; i < len; ++i)
+            out.push_back(data[i] ^ ks.NextByte());
         return out;
     }
 }
