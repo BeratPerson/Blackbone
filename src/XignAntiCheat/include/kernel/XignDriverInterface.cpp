@@ -1,6 +1,7 @@
 #include "kernel/XignDriverInterface.hpp"
 #include "kernel/WbmfAuth.hpp"
 #include "crypto/PacketBuilder.hpp"
+#include "XignDefs.hpp"
 #include <iostream>
 #include <cstring>
 
