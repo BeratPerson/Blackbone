@@ -211,8 +211,8 @@ void PerformInjectAsync(DWORD pid, const std::wstring& dllPath)
         }
 
         auto image = proc.mmap().MapImage(
-            absDllPath.c_str(),
-            mapFlags
+            dllPath,
+            eLoadFlags::WipeHeader | eLoadFlags::HideVAD | eLoadFlags::NoSxS
         );
 
         if (!image)
