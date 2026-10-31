@@ -1,4 +1,5 @@
 #pragma once
+#include "XignDefs.hpp"
 #include <vector>
 #include <string>
 #include <cstdint>

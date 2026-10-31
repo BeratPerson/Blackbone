@@ -10,8 +10,8 @@
 extern "C" __declspec(dllimport) uint32_t __stdcall NtCreateFile(
     void** FileHandle,
     uint32_t DesiredAccess,
-    NtObjectAttributes* ObjectAttributes,
-    NtIoStatusBlock* IoStatusBlock,
+    Xign::NtObjectAttributes* ObjectAttributes,
+    Xign::NtIoStatusBlock* IoStatusBlock,
     void* AllocationSize,
     uint32_t FileAttributes,
     uint32_t ShareAccess,
