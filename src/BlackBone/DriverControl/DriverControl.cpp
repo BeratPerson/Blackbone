@@ -745,6 +745,90 @@ NTSTATUS DriverControl::EnumMemoryRegions( DWORD pid, std::vector<MEMORY_BASIC_I
 
 
 
+// Map a Win32 service-start error to a relevant NTSTATUS for callers.
+// Also calls SetLastError so callers can still retrieve the original Win32 code.
+static NTSTATUS ScmErrToNt( DWORD err )
+{
+    SetLastError( err ); // preserve for caller logging
+    switch (err)
+    {
+    case ERROR_SERVICE_ALREADY_RUNNING: return STATUS_SUCCESS;
+    case ERROR_ACCESS_DENIED:           return STATUS_ACCESS_DENIED;
+    case ERROR_FILE_NOT_FOUND:          return STATUS_OBJECT_NAME_NOT_FOUND;
+    case 31  /*ERROR_GEN_FAILURE*/:     return (NTSTATUS)0xC0000428L; // CI/testsigning block
+    case 577 /*ERROR_INVALID_IMAGE_HASH*/: return (NTSTATUS)0xC0000428L; // STATUS_INVALID_IMAGE_HASH
+    case 1275/*ERROR_DRIVER_BLOCKED*/:  return (NTSTATUS)0xC0000906L;    // STATUS_DRIVER_BLOCKED_CRITICAL
+    default:                            return STATUS_UNSUCCESSFUL;
+    }
+}
+
+/// <summary>
+/// Load driver via Service Control Manager — works from WOW64 (32-bit) processes.
+/// NtLoadDriver syscall returns STATUS_NOT_SUPPORTED when called from WOW64.
+/// </summary>
+NTSTATUS DriverControl::LoadDriverViaSCM( const std::wstring& svcName, const std::wstring& path )
+{
+    SC_HANDLE hScm = OpenSCManagerW( nullptr, nullptr, SC_MANAGER_ALL_ACCESS );
+    if (!hScm)
+        return ScmErrToNt( GetLastError() );
+
+    // Try opening an existing service first (e.g. leftover from a previous run).
+    SC_HANDLE hSvc = OpenServiceW( hScm, svcName.c_str(), SERVICE_ALL_ACCESS );
+    if (!hSvc)
+    {
+        hSvc = CreateServiceW(
+            hScm,
+            svcName.c_str(), svcName.c_str(),
+            SERVICE_ALL_ACCESS,
+            SERVICE_KERNEL_DRIVER,
+            SERVICE_DEMAND_START,
+            SERVICE_ERROR_IGNORE,
+            path.c_str(),
+            nullptr, nullptr, nullptr, nullptr, nullptr
+        );
+    }
+
+    if (!hSvc)
+    {
+        NTSTATUS st = ScmErrToNt( GetLastError() );
+        CloseServiceHandle( hScm );
+        return st;
+    }
+
+    BOOL started = StartServiceW( hSvc, 0, nullptr );
+    DWORD err    = GetLastError();
+    CloseServiceHandle( hSvc );
+    CloseServiceHandle( hScm );
+
+    return (started || err == ERROR_SERVICE_ALREADY_RUNNING)
+        ? STATUS_SUCCESS
+        : ScmErrToNt( err );
+}
+
+/// <summary>
+/// Unload driver via Service Control Manager — works from WOW64 (32-bit) processes.
+/// </summary>
+NTSTATUS DriverControl::UnloadDriverViaSCM( const std::wstring& svcName )
+{
+    SC_HANDLE hScm = OpenSCManagerW( nullptr, nullptr, SC_MANAGER_ALL_ACCESS );
+    if (hScm)
+    {
+        SC_HANDLE hSvc = OpenServiceW( hScm, svcName.c_str(),
+                                       SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE );
+        if (hSvc)
+        {
+            SERVICE_STATUS ss = {};
+            ControlService( hSvc, SERVICE_CONTROL_STOP, &ss );
+            DeleteService( hSvc );
+            CloseServiceHandle( hSvc );
+        }
+        CloseServiceHandle( hScm );
+    }
+    SHDeleteKeyW( HKEY_LOCAL_MACHINE,
+                  (L"SYSTEM\\CurrentControlSet\\Services\\" + svcName).c_str() );
+    return STATUS_SUCCESS;
+}
+
 /// <summary>
 /// Load arbitrary driver
 /// </summary>
@@ -753,9 +837,18 @@ NTSTATUS DriverControl::EnumMemoryRegions( DWORD pid, std::vector<MEMORY_BASIC_I
 /// <returns>Status</returns>
 NTSTATUS DriverControl::LoadDriver( const std::wstring& svcName, const std::wstring& path )
 {
-    UNICODE_STRING Ustr;
+    // NtLoadDriver called from a WOW64 (x86) process on a 64-bit OS always returns
+    // STATUS_NOT_SUPPORTED — the kernel refuses the syscall from the WOW64 bridge.
+    // SCM (Service Control Manager) uses an RPC path that works from both 32-bit and
+    // 64-bit callers, so use it whenever this process is WOW64.
+    BOOL isWow64 = FALSE;
+    IsWow64Process( GetCurrentProcess(), &isWow64 );
 
-    // If no file provided, try to start existing service
+    if (isWow64)
+        return LoadDriverViaSCM( svcName, path );
+
+    // Native x64: use the traditional NtLoadDriver path.
+    UNICODE_STRING Ustr;
     if (!path.empty() && PrepareDriverRegEntry( svcName, path ) != 0)
         return LastNtStatus();
 
@@ -773,6 +866,12 @@ NTSTATUS DriverControl::LoadDriver( const std::wstring& svcName, const std::wstr
 /// <returns>Status</returns>
 NTSTATUS DriverControl::UnloadDriver( const std::wstring& svcName )
 {
+    BOOL isWow64 = FALSE;
+    IsWow64Process( GetCurrentProcess(), &isWow64 );
+
+    if (isWow64)
+        return UnloadDriverViaSCM( svcName );
+
     UNICODE_STRING Ustr = { 0 };
 
     std::wstring regPath = L"\\registry\\machine\\SYSTEM\\CurrentControlSet\\Services\\" + svcName;

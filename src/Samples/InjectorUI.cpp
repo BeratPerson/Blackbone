@@ -307,31 +307,55 @@ static bool IsXhunter2Running()
 }
 
 // ====================================================================
-// Launch Watcher — bilinenPID icin xhunter2 bekle, sonra inject et
+// Launch Watcher — xhunter2 servis OLMADAN erken inject
+//
+// NEDEN ERKEN: xhunter aktif olduktan 3 sn sonra inject yapmak,
+// XIGNCODE'un VAD scanner'i calistiktan ~13 sn SONRA inject anlamina
+// gelir. XIGNCODE yeni private VAD bolgesi gorur -> sureci oldurur.
+//
+// YENİ STRATEJI: x3.xem modulu gorundukten ~1.5 sn sonra inject et.
+// Bu noktada XIGNCODE'un VAD scanner'i henuz aktif degil.
+// berat.dll'nin WorkerThread'i kendi icinde xhunter'i bekler.
 // "Oyunu Baslat" akisi: process zaten var, isimle arama yapma
 // ====================================================================
 static void StartLaunchWatcher(DWORD pid, const std::wstring& dllPath, const std::wstring& procName)
 {
     std::thread([pid, dllPath, procName]()
     {
-        Log(L"[*] Launch watcher: PID=%lu — xhunter servisi bekleniyor (maks. 90 sn)...", pid);
-        SetStatus(L"  [BEKLENIYOR]  xhunter yukleniyor...");
+        Log(L"[*] Launch watcher devreye girdi (PID=%lu). Erken inject modunda...", pid);
+        SetStatus(L"  [BEKLENIYOR]  x3.xem bekleniyor (erken mod)...");
 
-        bool xh2Ready = false;
-        for (int w = 0; w < 180; ++w)
+        // x3.xem modulunun process icinde yuklenmesini bekle (maks. 30 sn)
+        // NOT: xhunter'i BEKLEMIYORUZ — XIGNCODE VAD scanner aktif olmadan inject.
         {
-            if (IsXhunter2Running()) { xh2Ready = true; break; }
-            if (w % 6 == 0)
-                Log(L"[...] xhunter bekleniyor... (%d sn gecti)", w / 2);
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            blackbone::Process tmpProc;
+            if (NT_SUCCESS(tmpProc.Attach(pid)))
+            {
+                for (int w = 0; w < 600; ++w)
+                {
+                    auto mod = tmpProc.modules().GetModule(L"x3.xem");
+                    if (mod)
+                    {
+                        Log(L"[+] x3.xem modulu goruldu @ 0x%p. Erken inject penceresi acik!", (void*)mod->baseAddress);
+                        break;
+                    }
+                    if (w % 10 == 0)
+                        Log(L"[...] x3.xem bekleniyor... (%d sn gecti)", w / 10);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+                tmpProc.Detach();
+            }
+            else
+            {
+                Log(L"[!] Process'e baglanilamadi, zaman asimi ile devam ediliyor.");
+            }
         }
 
-        if (xh2Ready)
-            Log(L"[+] xhunter servis AKTIF. Stabilizasyon icin 3 sn...");
-        else
-            Log(L"[!] xhunter 90 sn icinde bulunamadi — devam ediliyor.");
-
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        // x3.xem gorundukten sonra 1.5 sn bekle:
+        // - x3.xem DLL_PROCESS_ATTACH tamamlansin
+        // - Ama XIGNCODE VAD scanner HENUZ aktif olmasin
+        Log(L"[*] x3.xem baslangic stabilizasyonu: 1500 ms bekleniyor (VAD scanner oncesi pencere)...");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1500));
 
         // Hedef process hala calisiyor mu?
         HANDLE hChk = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
@@ -374,27 +398,12 @@ static void StartWatcher(const std::wstring& procName, const std::wstring& dllPa
                 Log(L"[+] '%s' algilandi! PID: %lu", procName.c_str(), pid);
                 EnableWindow(g_hBtnInject, TRUE);
 
-                // xhunter2 kernel driver tamamen yuklenmeden enjekte etme
-                Log(L"[*] xhunter2 servisi bekleniyor (maks. 60 sn)...");
-                bool xh2Ready = false;
-                for (int w = 0; w < 120; ++w)
-                {
-                    if (IsXhunter2Running())
-                    {
-                        xh2Ready = true;
-                        break;
-                    }
-                    if (w % 6 == 0)
-                        Log(L"[...] xhunter2 bekleniyor... (%d sn gecti)", w / 2);
-                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                }
-
-                if (xh2Ready)
-                    Log(L"[+] xhunter2 servis AKTIF. Stabilizasyon icin 3 sn bekleniyor...");
-                else
-                    Log(L"[!] xhunter2 servis 60 sn icinde aktif olmadi — yine de devam ediliyor.");
-
-                std::this_thread::sleep_for(std::chrono::seconds(3));
+                // ERKEN INJECT: xhunter beklenmez.
+                // XIGNCODE VAD scanner, xhunter aktif olmadan once INJECT et.
+                // berat.dll WorkerThread icinde kendi bekleme dongusu var.
+                Log(L"[*] Erken inject modunda: x3.xem stabilizasyonu 1500 ms...");
+                Log(L"[*] NOT: xhunter beklenmez — VAD scanner oncesi pencerede inject.");
+                std::this_thread::sleep_for(std::chrono::milliseconds(1500));
 
                 LRESULT chk = SendMessageW(g_hChkAutoInject, BM_GETCHECK, 0, 0);
                 if (chk == BST_CHECKED)

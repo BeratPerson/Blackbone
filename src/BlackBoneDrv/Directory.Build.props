@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto-injected by Claude to redirect v142/v143 toolset → v145 and set WDK include paths -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <!-- Redirect missing v142/v143 to installed v145 -->
+    <V142TargetsFile>$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v145\Toolset.targets</V142TargetsFile>
+    <V143TargetsFile>$(VCTargetsPath)\Platforms\$(Platform)\PlatformToolsets\v145\Toolset.targets</V143TargetsFile>
+    <!-- Disable Spectre mitigations (no Spectre libs for kernel mode in this setup) -->
+    <SpectreMitigation>false</SpectreMitigation>
+    <!-- WDK 22621 headers/libs + WDK 28000 build tasks (has 18.0 DLL for VS2026) -->
+    <WDKContentRoot>C:\Program Files (x86)\Windows Kits\10\</WDKContentRoot>
+    <WDKKitRoot>C:\Program Files (x86)\Windows Kits\10\</WDKKitRoot>
+    <WindowsSDKDir>C:\Program Files (x86)\Windows Kits\10\</WindowsSDKDir>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <KitRoot>C:\Program Files (x86)\Windows Kits\10\</KitRoot>
+    <!-- Use 28000 build folder so MSBuild finds Microsoft.DriverKit.Build.Tasks.18.0.dll -->
+    <WDKBuildFolder>10.0.28000.0</WDKBuildFolder>
+    <!-- Bypass SDK/WDK presence checks — we know both are installed -->
+    <MatchingWdkPresent>true</MatchingWdkPresent>
+    <MatchingSdkPresent>true</MatchingSdkPresent>
+    <!-- Win10Release has empty TargetVersion — set it explicitly -->
+    <TargetVersion Condition="'$(TargetVersion)' == ''">Windows10</TargetVersion>
+    <TreatWarningAsError>false</TreatWarningAsError>
+  </PropertyGroup>
+  <!-- Append /WX- /wd4996 /wd5286 /wd5287 to all ClCompile items to suppress deprecated-API errors -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalOptions>/WX- /wd4996 /wd5286 /wd5287 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>

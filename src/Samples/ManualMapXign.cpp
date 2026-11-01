@@ -70,6 +70,138 @@ static bool DisableWdacDriverBlocklist()
     return res == ERROR_SUCCESS;
 }
 
+// Forward declaration (InternalLog asagida tanimli)
+static void InternalLog(const wchar_t* fmt, ...);
+
+// -----------------------------------------------------------------------
+// Test Signing'i BCDEdit ile otomatik aktif et.
+// NOT: Degisiklik bir sonraki REBOOT'ta etkin olur.
+// -----------------------------------------------------------------------
+static void TryEnableTestSigning()
+{
+    // Mevcut durumu kontrol et — CI policy flags (0x08 = testsigning aktif)
+    DWORD flags = 0, type = REG_DWORD, sz = sizeof(DWORD);
+    HKEY hKey = nullptr;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\CI\\Config",
+                      0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS)
+    {
+        RegQueryValueExW(hKey, L"TestSigning", nullptr, &type, (LPBYTE)&flags, &sz);
+        RegCloseKey(hKey);
+    }
+    // CI\Config\TestSigning var ve 1 ise zaten aktif
+    if (flags == 1)
+    {
+        InternalLog(L"[*] TestSigning registry zaten aktif — reboot bekleniyor olabilir.");
+        return;
+    }
+
+    InternalLog(L"[*] 'bcdedit /set testsigning on' otomatik calistirilıyor...");
+
+    STARTUPINFOW si = { sizeof(si) };
+    PROCESS_INFORMATION pi = {};
+    wchar_t cmd[] = L"bcdedit /set testsigning on";
+
+    if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE,
+                       CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+    {
+        WaitForSingleObject(pi.hProcess, 8000);
+        DWORD exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+
+        if (exitCode == 0)
+        {
+            InternalLog(L"[+] Test Signing AKTIF edildi!");
+            InternalLog(L"[!] >>> Bilgisayari YENIDEN BASLATMANIZ GEREKIYOR <<<");
+            InternalLog(L"[!]     Reboot sonrasi Samples.exe tekrar calistirin.");
+        }
+        else
+        {
+            InternalLog(L"[!] bcdedit basarisiz (ExitCode=%lu) — Admin yetki yok olabilir.", exitCode);
+            InternalLog(L"[!] Manuel calistirin (Admin CMD): bcdedit /set testsigning on");
+            InternalLog(L"[!] Sonra bilgisayari YENIDEN BASLATIP Samples.exe tekrar calistirin.");
+        }
+    }
+    else
+    {
+        DWORD err = GetLastError();
+        InternalLog(L"[!] bcdedit bulunamadi veya calistirilamadi (Win32=%lu).", err);
+        InternalLog(L"[!] Manuel: Admin CMD > bcdedit /set testsigning on > REBOOT");
+    }
+}
+
+// -----------------------------------------------------------------------
+// {60FD87F8} WDAC Platform Politikasini devre disi birak
+// KB5077181 ile gelen bu Microsoft-imzali politika WDAC seviyesinde
+// test-signed driver'lari blokluyor. nointegritychecks bunu bypass ETMEZ.
+// Bu fonksiyon dosyayi rename eder (reboot'ta etkili).
+// -----------------------------------------------------------------------
+static void TryDisableWdacPlatformPolicy()
+{
+    const wchar_t* cipPaths[] = {
+        L"C:\\Windows\\System32\\CodeIntegrity\\CiPolicies\\Active\\{60FD87F8-4593-44A0-91B0-2E0DA022F248}.cip",
+        L"C:\\Windows\\System32\\CodeIntegrity\\CIPolicies\\Active\\{60FD87F8-4593-44A0-91B0-2E0DA022F248}.cip",
+    };
+
+    for (const auto* cip : cipPaths)
+    {
+        if (GetFileAttributesW(cip) == INVALID_FILE_ATTRIBUTES)
+            continue;
+
+        InternalLog(L"[*] {60FD87F8} WDAC politikasi bulundu: %s", cip);
+
+        // Sahiplik al
+        {
+            HANDLE hToken = nullptr;
+            if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, &hToken))
+            {
+                TOKEN_PRIVILEGES tp = {};
+                tp.PrivilegeCount = 1;
+                tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+                LookupPrivilegeValueW(nullptr, L"SeTakeOwnershipPrivilege", &tp.Privileges[0].Luid);
+                AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+                LookupPrivilegeValueW(nullptr, L"SeRestorePrivilege", &tp.Privileges[0].Luid);
+                AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+                CloseHandle(hToken);
+            }
+        }
+
+        // Readonly kaldir
+        DWORD attr = GetFileAttributesW(cip);
+        if (attr & FILE_ATTRIBUTE_READONLY)
+            SetFileAttributesW(cip, attr & ~FILE_ATTRIBUTE_READONLY);
+
+        // Rename to .disabled (mevcut boot'ta WDAC bellekte kalir ama sonraki boot'ta yuklenmez)
+        wchar_t disabledPath[MAX_PATH] = {};
+        swprintf_s(disabledPath, L"%s.disabled", cip);
+
+        if (MoveFileExW(cip, disabledPath, MOVEFILE_REPLACE_EXISTING))
+        {
+            InternalLog(L"[+] {60FD87F8}.cip -> .disabled: Bir sonraki reboot'ta WDAC politikasi KALDIRILACAK!");
+            InternalLog(L"[+] Simdi Samples.exe'yi kapatip bilgisayari yeniden baslatiniz.");
+            return;
+        }
+        else
+        {
+            DWORD err = GetLastError();
+            InternalLog(L"[!] {60FD87F8}.cip yeniden adlandirilamadi (hata=%lu). Silinmeye calisiliyor...", err);
+
+            // Delete deneme
+            if (DeleteFileW(cip))
+            {
+                InternalLog(L"[+] {60FD87F8}.cip SILINDI! Bir sonraki reboot'ta etkili.");
+                return;
+            }
+
+            // MoveFileEx ile reboot'ta sil
+            MoveFileExW(cip, nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+            InternalLog(L"[!] Kilitlenemedi — reboot sirasinda silinmek uzere siraya alindi (2 reboot gerekebilir).");
+            InternalLog(L"[!] Alternatif: KB5077181'i kaldirin veya WinRE'den elle silin.");
+        }
+    }
+}
+
 // -----------------------------------------------------------------------
 // HVCI (Hypervisor-Protected Code Integrity) aktif mi kontrol et
 // HVCI aktifse kernel driver yükleme BIOS seviyesinde engellenir.
@@ -236,6 +368,11 @@ uintptr_t ManualMapDll(Process& proc, const wchar_t* dllPath)
         static_cast<int>(eLoadFlags::ManualImports));
 
     {
+        // --- KB5077181 WDAC platform politikasini devre disi birak ---
+        // Bu politika testsigning+nointegritychecks'i bypass eder ve driver yuklemeyi bloklar.
+        // Rename basarili olursa bir sonraki reboot'ta surucu yuklenebilir.
+        TryDisableWdacPlatformPolicy();
+
         // --- SeLoadDriverPrivilege zorunlu, yoksa SCM driver yukleyemez ---
         if (EnableLoadDriverPrivilege())
             InternalLog(L"[+] SeLoadDriverPrivilege aktif edildi.");
@@ -340,16 +477,26 @@ uintptr_t ManualMapDll(Process& proc, const wchar_t* dllPath)
                 }
                 else
                 {
+                    DWORD scmWin32 = GetLastError(); // ScmErrToNt tarafindan SetLastError ile konuldu
                     const wchar_t* hint = L"";
                     if ((uint32_t)st == 0xC0000906u)
-                        hint = L" [WDAC Blocklist — kayit defteri yazildi, YENIDEN BASLAT gerekiyor]";
+                        hint = L" [WDAC Blocklist — registry yazildi, YENIDEN BASLAT]";
+                    else if ((uint32_t)st == 0xC0000428u)
+                        hint = L" [Test Signing kapali — otomatik etkinlestiriliyor, REBOOT gerekiyor]";
                     else if ((uint32_t)st == 0xC0000365u)
-                        hint = L" [Imza hash hatasi — test signing acik degil veya HVCI aktif]";
+                        hint = L" [Imza dogrulama hatasi — create_cert_eku_ADMIN.ps1 calistirin!]";
+                    else if ((uint32_t)st == 0xC00000BBu)
+                        hint = L" [WOW64 NtLoadDriver reddi]";
                     else if ((uint32_t)st == 0xC0000034u)
                         hint = L" [Dosya bulunamadi]";
                     else if ((uint32_t)st == 0xC0000022u)
                         hint = L" [Erisim reddedildi — Admin ile calistirin]";
-                    InternalLog(L"[!] Surucu yuklenemedi: NTSTATUS=0x%08X%s", (uint32_t)st, hint);
+                    InternalLog(L"[!] Surucu yuklenemedi: NTSTATUS=0x%08X Win32=%lu%s",
+                                (uint32_t)st, scmWin32, hint);
+
+                    // Test signing kapali ise otomatik etkinlestir
+                    if ((uint32_t)st == 0xC0000428u)
+                        TryEnableTestSigning();
                 }
             }
         }

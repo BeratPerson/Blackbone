@@ -311,6 +311,16 @@ private:
     /// <param name="path">Driver path</param>
     /// <returns>Status code</returns>
     LSTATUS PrepareDriverRegEntry( const std::wstring& svcName, const std::wstring& path );
+
+    /// <summary>
+    /// Load driver via Service Control Manager (works from WOW64/32-bit processes)
+    /// </summary>
+    NTSTATUS LoadDriverViaSCM( const std::wstring& svcName, const std::wstring& path );
+
+    /// <summary>
+    /// Unload driver via Service Control Manager (works from WOW64/32-bit processes)
+    /// </summary>
+    NTSTATUS UnloadDriverViaSCM( const std::wstring& svcName );
 private:
     Handle _hDriver;
     NTSTATUS _loadStatus = STATUS_NOT_FOUND;
