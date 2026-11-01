@@ -48,8 +48,33 @@ typedef struct _LDR_DATA_TABLE_ENTRY_FULL {
 } LDR_DATA_TABLE_ENTRY_FULL, * PLDR_DATA_TABLE_ENTRY_FULL;
 
 // ======================================================================
-// Loglama (OutputDebugString)
+// Loglama (OutputDebugString + dosya)
+// Log dosyasi: %TEMP%\berat_inject.log  (C:\Users\<user>\AppData\Local\Temp\)
 // ======================================================================
+static HANDLE g_hLog = INVALID_HANDLE_VALUE;
+
+static void LogInit()
+{
+    wchar_t tmpPath[MAX_PATH] = {};
+    if (GetTempPathW(MAX_PATH, tmpPath))
+    {
+        wchar_t logPath[MAX_PATH] = {};
+        _snwprintf_s(logPath, MAX_PATH, _TRUNCATE, L"%sberat_inject.log", tmpPath);
+        g_hLog = CreateFileW(logPath, GENERIC_WRITE, FILE_SHARE_READ,
+                             nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    }
+}
+
+static void LogFlush()
+{
+    if (g_hLog != INVALID_HANDLE_VALUE)
+    {
+        FlushFileBuffers(g_hLog);
+        CloseHandle(g_hLog);
+        g_hLog = INVALID_HANDLE_VALUE;
+    }
+}
+
 static void DbgLog(const wchar_t* fmt, ...)
 {
     wchar_t buf[2048] = {};
@@ -60,6 +85,29 @@ static void DbgLog(const wchar_t* fmt, ...)
     OutputDebugStringW(L"[berat.dll] ");
     OutputDebugStringW(buf);
     OutputDebugStringW(L"\n");
+
+    // Dosyaya yaz
+    if (g_hLog != INVALID_HANDLE_VALUE)
+    {
+        char narrow[2048] = {};
+        WideCharToMultiByte(CP_UTF8, 0, buf, -1, narrow, sizeof(narrow) - 1, nullptr, nullptr);
+        DWORD written = 0;
+        char line[2100] = {};
+        int len = _snprintf_s(line, sizeof(line), _TRUNCATE, "[berat.dll] %s\r\n", narrow);
+        if (len > 0)
+            WriteFile(g_hLog, line, (DWORD)len, &written, nullptr);
+    }
+}
+
+// ======================================================================
+// Korumalı DWORD okuma — C++ nesnesi olmayan fonksiyon (C2712 hatası önlenir)
+// ======================================================================
+static DWORD SafeReadDword(const volatile void* src, bool* pOk) noexcept
+{
+    DWORD val = 0;
+    __try { val = *static_cast<const volatile DWORD*>(src); if (pOk) *pOk = true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { val = 0; if (pOk) *pOk = false; }
+    return val;
 }
 
 // ======================================================================
@@ -153,7 +201,7 @@ static void WorkerThread(HMODULE hSelf)
     DbgLog(L"[2/3] x3.xem g_pCoreInterface bekleniyor (maks. 6 sn)...");
     {
         HMODULE hX3 = nullptr;
-        for (int i = 0; i < 60 && !hX3; ++i)          // maks. 3s for module
+        for (int i = 0; i < 60 && !hX3; ++i)
         {
             hX3 = GetModuleHandleW(L"x3.xem");
             if (!hX3) Sleep(50);
@@ -161,18 +209,29 @@ static void WorkerThread(HMODULE hSelf)
         if (hX3)
         {
             // RVA 0x2A904C = g_pCoreInterface (IXigncodeCore COM pointer)
+            // Korumalı okuma: yanlış RVA → AV → oyun crash yerine atlaniyor
             volatile DWORD* pCore = reinterpret_cast<volatile DWORD*>(
                 reinterpret_cast<BYTE*>(hX3) + 0x2A904Cu);
-            for (int i = 0; i < 120; ++i)              // maks. 6s for init
+            for (int i = 0; i < 120; ++i)
             {
-                if (*pCore != 0) break;
+                bool readOk = false;
+                DWORD val = SafeReadDword(pCore, &readOk);
+                if (!readOk)
+                {
+                    DbgLog(L"[2/3] pCore okuma AV — RVA yanlis olabilir, devam ediliyor.");
+                    break;
+                }
+                if (val != 0)
+                {
+                    DbgLog(L"[2/3] g_pCoreInterface = 0x%08X", val);
+                    break;
+                }
                 Sleep(50);
             }
-            DbgLog(L"[2/3] g_pCoreInterface = 0x%08X", *pCore);
         }
         else
         {
-            DbgLog(L"[2/3] x3.xem yüklenemedi, kisa bekleme ile devam ediliyor...");
+            DbgLog(L"[2/3] x3.xem bulunamadi, kisa bekleme ile devam ediliyor...");
             Sleep(500);
         }
     }
@@ -241,6 +300,8 @@ extern "C" BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVO
     if (ul_reason_for_call == DLL_PROCESS_ATTACH)
     {
         DisableThreadLibraryCalls(hModule);
+        LogInit();
+        DbgLog(L"DLL_PROCESS_ATTACH - PID=%lu", GetCurrentProcessId());
 
         // XignCode'un module scan'inden once hizla thread ac
         HANDLE hThread = CreateThread(nullptr, 0,
@@ -250,6 +311,7 @@ extern "C" BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVO
                 __except (EXCEPTION_EXECUTE_HANDLER) {
                     DbgLog(L"WorkerThread'de yakalanmamis exception yutuldu.");
                 }
+                LogFlush();
                 return 0;
             },
             hModule, 0, nullptr);
@@ -257,7 +319,10 @@ extern "C" BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVO
         if (hThread)
             CloseHandle(hThread);
         else
+        {
             DbgLog(L"KRITIK HATA: CreateThread basarisiz! (err=%lu)", GetLastError());
+            LogFlush();
+        }
     }
     return TRUE;
 }

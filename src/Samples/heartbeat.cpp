@@ -307,39 +307,81 @@ namespace XignBypass
         // --- 3. Poll g_pCoreInterface, then redirect vtable[7] to our stub ---
         {
             Log(L"[HB] g_pCoreInterface bekleniyor (maks. 5 sn)...");
-            volatile uintptr_t* pCorePtr =
-                reinterpret_cast<volatile uintptr_t*>(base + X3::CORE_PTR_RVA);
-            uintptr_t coreObj = 0;
-            for (int w = 0; w < 100; ++w)
-            {
-                coreObj = *pCorePtr;
-                if (coreObj) break;
-                Sleep(50);
-            }
 
-            if (!coreObj)
+            // Validate RVA range before reading
+            if (X3::CORE_PTR_RVA + sizeof(uintptr_t) > sizeOfImage)
             {
-                Log(L"[HB]   [WARN] g_pCoreInterface NULL kaldi — vtable[7] patch atlanıyor.");
+                Log(L"[HB]   [SKIP] CORE_PTR_RVA=0x%X image sinirlari disinda (size=0x%X) — vtable[7] atlaniyor.",
+                    X3::CORE_PTR_RVA, sizeOfImage);
             }
             else
             {
-                // coreObj -> vtable pointer -> vtable[7] at offset 0x1C
-                uintptr_t vtable = *reinterpret_cast<uintptr_t*>(coreObj);
-                uintptr_t* pGetProc = reinterpret_cast<uintptr_t*>(vtable + 0x1C);
-
-                DWORD oldProt = 0;
-                if (VirtualProtect(pGetProc, sizeof(uintptr_t), PAGE_EXECUTE_READWRITE, &oldProt))
+                volatile uintptr_t* pCorePtr =
+                    reinterpret_cast<volatile uintptr_t*>(base + X3::CORE_PTR_RVA);
+                uintptr_t coreObj = 0;
+                bool readOk = false;
+                for (int w = 0; w < 100; ++w)
                 {
-                    *pGetProc = reinterpret_cast<uintptr_t>(&XignVtableGetProcStub);
-                    DWORD dummy = 0;
-                    VirtualProtect(pGetProc, sizeof(uintptr_t), oldProt, &dummy);
-                    FlushInstructionCache(GetCurrentProcess(), pGetProc, sizeof(uintptr_t));
-                    ++successCount;
-                    Log(L"[HB]   [OK]   vtable[7] -> XignVtableGetProcStub @0x%p", (void*)pGetProc);
+                    // SafeReadBytes: her okuma AV ile korunuyor
+                    if (!SafeReadBytes(const_cast<const uintptr_t*>(pCorePtr), reinterpret_cast<uint8_t*>(&coreObj), sizeof(coreObj)))
+                    {
+                        Log(L"[HB]   [WARN] pCorePtr okuma AV (RVA=0x%X) — vtable[7] atlaniyor.", X3::CORE_PTR_RVA);
+                        readOk = false;
+                        break;
+                    }
+                    readOk = true;
+                    if (coreObj) break;
+                    Sleep(50);
+                }
+
+                if (!readOk || !coreObj)
+                {
+                    Log(L"[HB]   [WARN] g_pCoreInterface NULL kaldi (readOk=%d) — vtable[7] patch atlaniyor.", (int)readOk);
                 }
                 else
                 {
-                    Log(L"[HB]   [FAIL] vtable[7] VirtualProtect hatasi: %lu", GetLastError());
+                    Log(L"[HB]   g_pCoreInterface=0x%p, vtable okunuyor...", (void*)coreObj);
+
+                    // coreObj -> vtable pointer -> vtable[7] at offset 0x1C
+                    uintptr_t vtable = 0;
+                    if (!SafeReadBytes(reinterpret_cast<const void*>(coreObj),
+                                       reinterpret_cast<uint8_t*>(&vtable), sizeof(vtable)))
+                    {
+                        Log(L"[HB]   [FAIL] coreObj vtable okuma AV (coreObj=0x%p) — versiyon uyumsuzlugu?", (void*)coreObj);
+                    }
+                    else if (!vtable)
+                    {
+                        Log(L"[HB]   [WARN] vtable NULL — vtable[7] patch atlaniyor.");
+                    }
+                    else
+                    {
+                        uintptr_t* pGetProc = reinterpret_cast<uintptr_t*>(vtable + 0x1C);
+
+                        // vtable[7] adresini oku (dogrulama icin)
+                        uintptr_t origFn = 0;
+                        if (!SafeReadBytes(pGetProc, reinterpret_cast<uint8_t*>(&origFn), sizeof(origFn)))
+                        {
+                            Log(L"[HB]   [FAIL] vtable[7] okuma AV (vtable=0x%p+0x1C) — patch atlaniyor.", (void*)vtable);
+                        }
+                        else
+                        {
+                            DWORD oldProt = 0;
+                            if (VirtualProtect(pGetProc, sizeof(uintptr_t), PAGE_EXECUTE_READWRITE, &oldProt))
+                            {
+                                *pGetProc = reinterpret_cast<uintptr_t>(&XignVtableGetProcStub);
+                                DWORD dummy = 0;
+                                VirtualProtect(pGetProc, sizeof(uintptr_t), oldProt, &dummy);
+                                FlushInstructionCache(GetCurrentProcess(), pGetProc, sizeof(uintptr_t));
+                                ++successCount;
+                                Log(L"[HB]   [OK]   vtable[7] 0x%p -> XignVtableGetProcStub @0x%p",
+                                    (void*)origFn, (void*)pGetProc);
+                            }
+                            else
+                            {
+                                Log(L"[HB]   [FAIL] vtable[7] VirtualProtect hatasi: %lu", GetLastError());
+                            }
+                        }
+                    }
                 }
             }
         }
