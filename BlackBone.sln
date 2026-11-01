@@ -13,7 +13,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "berat", "src\berat\berat.vc
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BlackboneTest", "src\BlackBoneTest\BlackBoneTest.vcxproj", "{15F6F215-4A5E-4B57-B0A0-90B067111285}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "XignAntiCheat", "src\XignAntiCheat\XignAntiCheat.vcxproj", "{5F86549C-CF6F-4C31-AFCE-3F0CE7FD10C7}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Dalga", "src\XignAntiCheat\XignAntiCheat.vcxproj", "{5F86549C-CF6F-4C31-AFCE-3F0CE7FD10C7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -772,7 +772,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow)
 
     HWND hWnd = CreateWindowExW(
         0, CLASS_NAME,
-        L"berat Injector v2.0  —  Blackbone + XignCode3 Bypass",
+        L"berat",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 690, 600,
         nullptr, nullptr, hInstance, nullptr);
