@@ -3,13 +3,22 @@
   <ItemGroup>
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="ManualMapXign.cpp" />
+    <ClCompile Include="BeratInjectorDLL.cpp" />
+    <ClCompile Include="XignProcessController.cpp" />
     <ClCompile Include="GameMemory.cpp" />
     <ClCompile Include="ManualMap.cpp" />
     <ClCompile Include="InjectorUI.cpp" />
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="scenario.cpp" />
+    <ClCompile Include="virtual_memory.cpp" />
+    <ClCompile Include="heartbeat.cpp" />
+    <ClCompile Include="simulation.cpp" />
+    <ClCompile Include="virtual_process.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ManualMapXign.h" />
     <ClInclude Include="GameMemory.h" />
+    <ClInclude Include="XignProcessController.hpp" />
+    <ClInclude Include="XignHeartbeatBypass.hpp" />
   </ItemGroup>
 </Project>

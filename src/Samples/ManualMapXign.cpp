@@ -133,9 +133,41 @@ uintptr_t ManualMapDll(Process& proc, const wchar_t* dllPath)
 {
     InternalLog(L"[*] ManualMap: Haritalama baslatiliyor (DLL: %s)...", dllPath);
 
-    eLoadFlags flags = eLoadFlags::WipeHeader;
-    if (NT_SUCCESS(Driver().EnsureLoaded()))
-        flags |= eLoadFlags::HideVAD;
+    // Try loading the BlackBone kernel driver (HideVAD requires it).
+    // Driver is x64-only; on a WOW64 process this may still succeed on x64 OS.
+    eLoadFlags flags = static_cast<eLoadFlags>(
+        static_cast<int>(eLoadFlags::WipeHeader) |
+        static_cast<int>(eLoadFlags::ManualImports));
+
+    {
+        wchar_t exePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        wchar_t* slash = wcsrchr(exePath, L'\\');
+        std::wstring drvDir = slash ? std::wstring(exePath, slash + 1) : L"";
+
+        const wchar_t* drvNames[] = {
+            L"BlackBoneDrv10.sys", L"BlackBoneDrv81.sys",
+            L"BlackBoneDrv8.sys",  L"BlackBoneDrv7.sys"
+        };
+        for (auto* n : drvNames)
+        {
+            std::wstring fullPath = drvDir + n;
+            DWORD attr = GetFileAttributesW(fullPath.c_str());
+            if (attr != INVALID_FILE_ATTRIBUTES)
+            {
+                InternalLog(L"[*] Surucü deneniyor: %s", fullPath.c_str());
+                if (NT_SUCCESS(Driver().EnsureLoaded(fullPath)))
+                {
+                    flags = static_cast<eLoadFlags>(
+                        static_cast<int>(flags) | static_cast<int>(eLoadFlags::HideVAD));
+                    InternalLog(L"[+] BlackBone surucusu yuklendi — HideVAD AKTIF.");
+                    break;
+                }
+            }
+        }
+        if (!(static_cast<int>(flags) & static_cast<int>(eLoadFlags::HideVAD)))
+            InternalLog(L"[!] BlackBone surucusu yuklenemedi — HideVAD devre disi (WipeHeader modunda devam).");
+    }
 
     auto image = proc.mmap().MapImage(dllPath, flags);
 
