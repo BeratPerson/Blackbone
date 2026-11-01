@@ -205,33 +205,30 @@ static void WorkerThread(HMODULE hSelf)
         DbgLog(L"============================================================");
         DbgLog(L"[OK] BYPASS AKTIF - Heartbeat/Validation patched.");
         DbgLog(L"============================================================");
-
-        // Kullaniciya goster (test — production'da kaldirilabilir)
-        MessageBoxW(nullptr,
-            L"berat.dll yuklendi!\n\nHeartbeat bypass AKTIF.\nx3.xem validation handler'lari patched.",
-            L"berat.dll - Bypass Aktif",
-            MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+        // MessageBox kasitli kaldirildi: x3.xem process'inden UI acmak
+        // XIGNCODE3'un davranis analizini tetikler -> process kill.
     }
     else
     {
         DbgLog(L"============================================================");
         DbgLog(L"[WARN] Heartbeat bypass kurulmadi - oyun stabiliteligi belirsiz.");
         DbgLog(L"============================================================");
-
-        MessageBoxW(nullptr,
-            L"berat.dll yuklendi!\n\nHeartbeat bypass BASARISIZ oldu.\nx3.xem bulunamadi veya patch uygulanamadi.",
-            L"berat.dll - Uyari",
-            MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+        // MessageBox kasitli kaldirildi (stealth).
     }
 
-    // Memory Reader UI ac (kendi thread'inde calisir, mesaj dongusu icerir)
-    DbgLog(L"[4/4] Memory Reader UI aciliyor...");
+    // NOT: MemoryReaderUI kasitli devre disi birakildi.
+    // x3.xem process'inden Win32 penceresi (CreateWindow) acmak
+    // XIGNCODE3'un anomali tespitini tetikler ve oyun kapatilir.
+    // Debug icin: #define BERAT_DEBUG_UI 1 tanimlayip yeniden derleyin.
+#ifdef BERAT_DEBUG_UI
+    DbgLog(L"[4/4] Memory Reader UI aciliyor (DEBUG modu)...");
     MemUI::CreateMemoryReaderWindow();
     DbgLog(L"[4/4] Memory Reader UI thread baslatildi.");
+#endif
 
-    // Bypass aktif kaldigi surece thread yasatilmasi gerekmiyor.
-    // Patch'ler kalici (VirtualProtect ile yazildi) - thread burada bitebilir.
-    DbgLog(L"Worker thread sonlandirildi. Bypass pasif hafizada aktif kalir.");
+    // Patch'ler kalici (VirtualProtect ile yazildi).
+    // Thread burada bitebilir — bypass hafizada aktif kalir.
+    DbgLog(L"Worker thread sonlandirildi. Bypass hafizada aktif.");
 }
 
 // ======================================================================

@@ -238,10 +238,21 @@ namespace XignSamples
         Log(L"[+] Image mapped successfully at: 0x%p", (void*)mappedBase);
 
         // Step 7: Post-mapping cleanup
+        // DllMain calistiktan sonra PEB unlink yapiyoruz.
+        // x3.xem init tamamlansin diye 800ms bekle — cok erken suspend edilirse
+        // xhunter init'i yari keser ve oyun kapanir.
         result.FailedStep = InjectionStep::PostMappingCleanup;
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        Log(L"[*] DllMain stabilizasyonu icin 800 ms bekleniyor...");
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
         SuspendProcessXign(proc);
-        RemoteUnlinkModule(proc, mappedBase, L"injected.dll");
+        // ManualMap ile inject edilen DLL zaten PEB LDR listesine YAZILMAZ —
+        // bu BlackBone'un tasarimi geregi, normal LoadLibrary ile fark bu.
+        // RemoteUnlinkModule PEB'de bulamazsa bu HATALI degil, DOGRU davranis.
+        bool unlinkOk = RemoteUnlinkModule(proc, mappedBase, L"injected.dll");
+        if (unlinkOk)
+            Log(L"[+] PEB unlink: giris bulunup kaldirildi (eski inject izleri temizlendi).");
+        else
+            Log(L"[+] PEB unlink: ManualMap ile inject edildigi icin PEB LDR'da zaten kayitli degil (stealth OK).");
         ResumeProcessXign(proc);
 
         // Step 8: Detach

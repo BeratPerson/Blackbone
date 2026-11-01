@@ -4,8 +4,104 @@
 #include <thread>
 #include <tlhelp32.h>
 #include <winternl.h>
+#include <vector>
 
 using namespace blackbone;
+
+// -----------------------------------------------------------------------
+// SeLoadDriverPrivilege'i enable et — SCM driver yukleme icin zorunlu
+// -----------------------------------------------------------------------
+static bool EnableLoadDriverPrivilege()
+{
+    HANDLE hToken = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(),
+                          TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken))
+        return false;
+
+    LUID luid = {};
+    if (!LookupPrivilegeValueW(nullptr, L"SeLoadDriverPrivilege", &luid))
+    {
+        CloseHandle(hToken);
+        return false;
+    }
+
+    TOKEN_PRIVILEGES tp = {};
+    tp.PrivilegeCount            = 1;
+    tp.Privileges[0].Luid        = luid;
+    tp.Privileges[0].Attributes  = SE_PRIVILEGE_ENABLED;
+
+    BOOL ok = AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+    DWORD err = GetLastError();
+    CloseHandle(hToken);
+    return ok && (err == ERROR_SUCCESS);
+}
+
+// -----------------------------------------------------------------------
+// WDAC Vulnerable Driver Blocklist'i devre disi birak
+// STATUS_DRIVER_BLOCKED_CRITICAL (0xC0000906) hatasinin cozumu.
+// NOT: HVCI (Hypervisor-Protected Code Integrity) AKTIF ise bu yetmez;
+//      BIOS'tan Secure Boot + VBS/HVCI kapatmak gerekir.
+// Reboot gerekir — bir sonraki acilista etkin olur.
+// -----------------------------------------------------------------------
+static bool DisableWdacDriverBlocklist()
+{
+    HKEY hKey = nullptr;
+    LONG res = RegCreateKeyExW(
+        HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\CI\\Config",
+        0, nullptr, REG_OPTION_NON_VOLATILE,
+        KEY_SET_VALUE | KEY_QUERY_VALUE, nullptr, &hKey, nullptr);
+    if (res != ERROR_SUCCESS) return false;
+
+    // Mevcut degeri kontrol et
+    DWORD curVal = 1, type = REG_DWORD, sz = sizeof(DWORD);
+    RegQueryValueExW(hKey, L"VulnerableDriverBlocklistEnable", nullptr, &type, (LPBYTE)&curVal, &sz);
+
+    if (curVal == 0)
+    {
+        RegCloseKey(hKey);
+        return true; // Zaten devre disi
+    }
+
+    DWORD val = 0;
+    res = RegSetValueExW(hKey, L"VulnerableDriverBlocklistEnable",
+                          0, REG_DWORD, (const BYTE*)&val, sizeof(val));
+    RegCloseKey(hKey);
+    return res == ERROR_SUCCESS;
+}
+
+// -----------------------------------------------------------------------
+// HVCI (Hypervisor-Protected Code Integrity) aktif mi kontrol et
+// HVCI aktifse kernel driver yükleme BIOS seviyesinde engellenir.
+// -----------------------------------------------------------------------
+static bool IsHvciActive()
+{
+    DWORD val = 0, type = REG_DWORD, sz = sizeof(DWORD);
+    HKEY hKey = nullptr;
+
+    // Win11 path
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\DeviceGuard\\Scenarios\\HypervisorEnforcedCodeIntegrity",
+        0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS)
+    {
+        RegQueryValueExW(hKey, L"Enabled", nullptr, &type, (LPBYTE)&val, &sz);
+        RegCloseKey(hKey);
+        if (val == 1) return true;
+    }
+
+    // Legacy path
+    val = 0; sz = sizeof(DWORD);
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
+        L"SYSTEM\\CurrentControlSet\\Control\\DeviceGuard",
+        0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS)
+    {
+        RegQueryValueExW(hKey, L"EnableVirtualizationBasedSecurity", nullptr, &type, (LPBYTE)&val, &sz);
+        RegCloseKey(hKey);
+        if (val == 1) return true;
+    }
+
+    return false;
+}
 
 static FnLogCallback g_logCb = nullptr;
 
@@ -140,33 +236,142 @@ uintptr_t ManualMapDll(Process& proc, const wchar_t* dllPath)
         static_cast<int>(eLoadFlags::ManualImports));
 
     {
+        // --- SeLoadDriverPrivilege zorunlu, yoksa SCM driver yukleyemez ---
+        if (EnableLoadDriverPrivilege())
+            InternalLog(L"[+] SeLoadDriverPrivilege aktif edildi.");
+        else
+            InternalLog(L"[!] SeLoadDriverPrivilege aktif edilemedi — Admin olmadan driver yuklenemez.");
+
+        // --- HVCI kontrolu ---
+        bool hvciActive = IsHvciActive();
+        if (hvciActive)
+        {
+            InternalLog(L"[!] HVCI (Hypervisor-Protected Code Integrity) AKTIF!");
+            InternalLog(L"[!] HVCI aktifken imzasiz/blocklist'teki driver BIOS seviyesinde engellenir.");
+            InternalLog(L"[!] Cozum: BIOS > Secure Boot KAPAT + Windows Security > Core Isolation > Memory Integrity KAPAT");
+        }
+        else
+        {
+            // HVCI kapali: WDAC blocklist'i devre disi birakabiliriz
+            if (DisableWdacDriverBlocklist())
+                InternalLog(L"[+] WDAC Vulnerable Driver Blocklist devre disi birakildi (registry yazildi).");
+            else
+                InternalLog(L"[!] WDAC blocklist registry yazma basarisiz — Admin hakki yeterli degil.");
+        }
+
+        // --- EXE klasoru ---
         wchar_t exePath[MAX_PATH] = {};
         GetModuleFileNameW(nullptr, exePath, MAX_PATH);
         wchar_t* slash = wcsrchr(exePath, L'\\');
-        std::wstring drvDir = slash ? std::wstring(exePath, slash + 1) : L"";
+        std::wstring exeDir = slash ? std::wstring(exePath, slash + 1) : L"";
 
-        const wchar_t* drvNames[] = {
-            L"BlackBoneDrv10.sys", L"BlackBoneDrv81.sys",
-            L"BlackBoneDrv8.sys",  L"BlackBoneDrv7.sys"
+        // --- Aranacak tum dizinler ---
+        // build\Win32\Debug  ->  ../../../  ->  proje koku
+        // Proje koku altinda: src\BlackBoneDrv\bin\x64\Win10Release\ vb.
+        auto buildParent = [&](int levels) -> std::wstring {
+            std::wstring p = exeDir;
+            for (int i = 0; i < levels; ++i)
+            {
+                // trailing backslash varsa kaldir
+                if (!p.empty() && p.back() == L'\\') p.pop_back();
+                auto pos = p.rfind(L'\\');
+                if (pos == std::wstring::npos) return L"";
+                p = p.substr(0, pos + 1);
+            }
+            return p;
         };
+
+        std::wstring projRoot = buildParent(3); // build\Win32\Debug -> proje koku
+
+        std::vector<std::wstring> searchDirs = {
+            exeDir,                                                              // EXE'nin yanı
+            projRoot,                                                            // Proje koku
+            projRoot + L"src\\BlackBoneDrv\\bin\\x64\\Win10Release\\",
+            projRoot + L"src\\BlackBoneDrv\\bin\\x64\\Win8.1Release\\",
+            projRoot + L"src\\BlackBoneDrv\\bin\\x64\\Win8Release\\",
+            projRoot + L"src\\BlackBoneDrv\\bin\\x64\\Win7Release\\",
+            projRoot + L"build\\x64\\Debug\\",                                   // x64 Debug yanı
+            projRoot + L"build\\x64\\Release\\",                                 // x64 Release yanı
+        };
+
+        // Current directory da ekle
+        wchar_t curDir[MAX_PATH] = {};
+        if (GetCurrentDirectoryW(MAX_PATH, curDir))
+        {
+            std::wstring cd = curDir;
+            if (!cd.empty() && cd.back() != L'\\') cd += L'\\';
+            searchDirs.push_back(cd);
+        }
+
+        // --- Driver arama isimleri ---
+        // BlackBoneDrv10.sys : resmi isim (Win10/Win11)
+        // BlackBone64.sys    : kullanici yeniden adlandirmis olabilir
+        // BlackBoneWin10.sys : bazi fork'larda bu isim kullanilir
+        // OS versiyonuna gore oncelik sirasi: Win10 > Win8.1 > Win8 > Win7
+        const wchar_t* drvNames[] = {
+            L"BlackBoneDrv10.sys",
+            L"BlackBone64.sys",        // kullanici tarafindan yeniden adlandirilmis variant
+            L"BlackBoneWin10.sys",     // fork variant
+            L"BlackBoneDrv81.sys",
+            L"BlackBoneDrv8.sys",
+            L"BlackBoneDrv7.sys"
+        };
+
+        bool driverLoaded = false;
         for (auto* n : drvNames)
         {
-            std::wstring fullPath = drvDir + n;
-            DWORD attr = GetFileAttributesW(fullPath.c_str());
-            if (attr != INVALID_FILE_ATTRIBUTES)
+            if (driverLoaded) break;
+            for (const auto& dir : searchDirs)
             {
-                InternalLog(L"[*] Surucü deneniyor: %s", fullPath.c_str());
-                if (NT_SUCCESS(Driver().EnsureLoaded(fullPath)))
+                if (dir.empty()) continue;
+                std::wstring fullPath = dir + n;
+                DWORD attr = GetFileAttributesW(fullPath.c_str());
+                if (attr == INVALID_FILE_ATTRIBUTES) continue;
+
+                InternalLog(L"[*] Surucu deneniyor: %s", fullPath.c_str());
+                NTSTATUS st = Driver().EnsureLoaded(fullPath);
+                if (NT_SUCCESS(st))
                 {
                     flags = static_cast<eLoadFlags>(
                         static_cast<int>(flags) | static_cast<int>(eLoadFlags::HideVAD));
-                    InternalLog(L"[+] BlackBone surucusu yuklendi — HideVAD AKTIF.");
+                    InternalLog(L"[+] BlackBone surucu yuklendi — HideVAD AKTIF. (%s)", fullPath.c_str());
+                    driverLoaded = true;
                     break;
+                }
+                else
+                {
+                    const wchar_t* hint = L"";
+                    if ((uint32_t)st == 0xC0000906u)
+                        hint = L" [WDAC Blocklist — kayit defteri yazildi, YENIDEN BASLAT gerekiyor]";
+                    else if ((uint32_t)st == 0xC0000365u)
+                        hint = L" [Imza hash hatasi — test signing acik degil veya HVCI aktif]";
+                    else if ((uint32_t)st == 0xC0000034u)
+                        hint = L" [Dosya bulunamadi]";
+                    else if ((uint32_t)st == 0xC0000022u)
+                        hint = L" [Erisim reddedildi — Admin ile calistirin]";
+                    InternalLog(L"[!] Surucu yuklenemedi: NTSTATUS=0x%08X%s", (uint32_t)st, hint);
                 }
             }
         }
-        if (!(static_cast<int>(flags) & static_cast<int>(eLoadFlags::HideVAD)))
-            InternalLog(L"[!] BlackBone surucusu yuklenemedi — HideVAD devre disi (WipeHeader modunda devam).");
+
+        if (!driverLoaded)
+        {
+            InternalLog(L"[!] BlackBone surucu yuklenemedi — HideVAD devre disi.");
+            if (hvciActive)
+            {
+                InternalLog(L"[!] COZUM (HVCI aktif):");
+                InternalLog(L"[!]   BIOS: Secure Boot KAPAT");
+                InternalLog(L"[!]   Windows Security > Cihaz Guvenlik > Cekirdek izolasyonu > Bellek butunlugu KAPAT");
+                InternalLog(L"[!]   Sonra YENIDEN BASLAT + Samples.exe tekrar calistir.");
+            }
+            else
+            {
+                InternalLog(L"[!] COZUM (WDAC blocklist):");
+                InternalLog(L"[!]   Kayit defteri guncellendi (VulnerableDriverBlocklistEnable=0).");
+                InternalLog(L"[!]   Windows'u YENIDEN BASLATIP Samples.exe tekrar calistirin.");
+                InternalLog(L"[!]   Test signing acik olmali: bcdedit /set testsigning on");
+            }
+        }
     }
 
     auto image = proc.mmap().MapImage(dllPath, flags);

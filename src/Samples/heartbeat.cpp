@@ -201,6 +201,26 @@ namespace XignBypass
             (uint32_t)base, origBase, sizeOfImage);
 
         // --- 1. Patch static dispatch handlers (correct RET per arg count) ---
+        // RVA dogrulama: hedef RVA'daki ilk byte bir fonksiyon baslangici olmali.
+        // Beklenen: PUSH EBP (0x55) veya PUSH ESI (0x56) veya MOV EDI,EDI (0x8B,0xFF)
+        // Bu kontrol yanlis RVA patch'inden kaynaklanan crash'i onler.
+        auto IsValidFunctionStart = [&](uintptr_t addr) -> bool {
+            uint8_t firstBytes[4] = {};
+            if (!SafeReadBytes(reinterpret_cast<const void*>(addr), firstBytes, 4)) return false;
+            // Gecerli x86 function prologue'lari
+            if (firstBytes[0] == 0x55) return true;              // PUSH EBP
+            if (firstBytes[0] == 0x56) return true;              // PUSH ESI
+            if (firstBytes[0] == 0x57) return true;              // PUSH EDI
+            if (firstBytes[0] == 0x53) return true;              // PUSH EBX
+            if (firstBytes[0] == 0x8B && firstBytes[1] == 0xFF) return true; // MOV EDI,EDI (hot-patch)
+            if (firstBytes[0] == 0x83 && firstBytes[1] == 0xEC) return true; // SUB ESP,N
+            if (firstBytes[0] == 0xB8) return true;              // MOV EAX (zaten patched)
+            if (firstBytes[0] == 0xCC) return true;              // INT3 (debug break - skip)
+            // Bilinen patch byte'i (zaten patched onceki run'dan)
+            if (firstBytes[0] == 0xB8 && firstBytes[1] == 0x01) return true;
+            return false;
+        };
+
         int successCount = 0;
         for (const auto& tgt : X3::TARGETS)
         {
@@ -213,6 +233,24 @@ namespace XignBypass
                 rec.detail  = "RVA out of image bounds";
                 m_patches.push_back(rec);
                 Log(L"[HB]   [SKIP] %-36S RVA=0x%04X -> image size asimi", tgt.name, tgt.rva);
+                continue;
+            }
+
+            uintptr_t targetAddr = base + tgt.rva;
+            if (!IsValidFunctionStart(targetAddr))
+            {
+                uint8_t chk[4] = {};
+                SafeReadBytes(reinterpret_cast<const void*>(targetAddr), chk, 4);
+                PatchRecord rec;
+                rec.name    = tgt.name;
+                rec.address = targetAddr;
+                rec.success = false;
+                rec.detail  = "Unexpected bytes at RVA (x3.xem version mismatch?) bytes="
+                              + std::to_string(chk[0]) + "," + std::to_string(chk[1])
+                              + "," + std::to_string(chk[2]) + "," + std::to_string(chk[3]);
+                m_patches.push_back(rec);
+                Log(L"[HB]   [SKIP] %-36S RVA=0x%04X bytes=%02X %02X %02X %02X -> gecersiz prolog",
+                    tgt.name, tgt.rva, chk[0], chk[1], chk[2], chk[3]);
                 continue;
             }
 
@@ -235,19 +273,34 @@ namespace XignBypass
         // --- 2. Patch Ordinal4 vtable-fallback (neutralise all unhandled dispatch IDs) ---
         // At RVA 0x170C: MOV EAX,[ECX]; PUSH ESI; PUSH [EBP+8]; PUSH ECX; CALL [EAX+1C]; POP ESI; POP EBP; RET 8
         // Replace with:  XOR EAX,EAX; POP ESI; POP EBP; RET 8; NOP
+        if (X3::ORDINAL4_VTBL_FALLBACK_RVA < sizeOfImage)
         {
-            constexpr uint8_t kVtblFallback[8] = { 0x31,0xC0, 0x5E, 0x5D, 0xC2,0x08,0x00, 0x90 };
-            auto rec = PatchHandler(base, X3::ORDINAL4_VTBL_FALLBACK_RVA,
-                                    "Ordinal4_VtblFallback", kVtblFallback, 8);
-            m_patches.push_back(rec);
-            if (rec.success)
+            uintptr_t vtblAddr = base + X3::ORDINAL4_VTBL_FALLBACK_RVA;
+            uint8_t chk[4] = {};
+            SafeReadBytes(reinterpret_cast<const void*>(vtblAddr), chk, 4);
+            // Beklenen: 8B 01 (MOV EAX,[ECX]) veya 31 C0 (XOR EAX,EAX = zaten patched)
+            bool vtblOk = (chk[0] == 0x8B && chk[1] == 0x01) ||  // MOV EAX,[ECX]
+                          (chk[0] == 0x31 && chk[1] == 0xC0);     // XOR EAX,EAX (zaten patched)
+            if (vtblOk)
             {
-                ++successCount;
-                Log(L"[HB]   [OK]   Ordinal4 vtable-fallback patched @0x%p", (void*)rec.address);
+                constexpr uint8_t kVtblFallback[8] = { 0x31,0xC0, 0x5E, 0x5D, 0xC2,0x08,0x00, 0x90 };
+                auto rec = PatchHandler(base, X3::ORDINAL4_VTBL_FALLBACK_RVA,
+                                        "Ordinal4_VtblFallback", kVtblFallback, 8);
+                m_patches.push_back(rec);
+                if (rec.success)
+                {
+                    ++successCount;
+                    Log(L"[HB]   [OK]   Ordinal4 vtable-fallback patched @0x%p", (void*)rec.address);
+                }
+                else
+                {
+                    Log(L"[HB]   [FAIL] Ordinal4 vtable-fallback -> %S", rec.detail.c_str());
+                }
             }
             else
             {
-                Log(L"[HB]   [FAIL] Ordinal4 vtable-fallback -> %S", rec.detail.c_str());
+                Log(L"[HB]   [SKIP] Ordinal4 vtable-fallback: beklenmeyen bytes %02X %02X %02X %02X (RVA degismis?)",
+                    chk[0], chk[1], chk[2], chk[3]);
             }
         }
 

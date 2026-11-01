@@ -273,7 +273,12 @@
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" "$(TargetDir)BlackBoneDrv10.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" "$(TargetDir)BlackBoneDrv81.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   "$(TargetDir)BlackBoneDrv8.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   "$(TargetDir)BlackBoneDrv7.sys"
+if exist "$(TargetDir)BlackBone64.sys" copy /Y "$(TargetDir)BlackBone64.sys" "$(TargetDir)BlackBoneDrv10.sys"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug(XP)|Win32'">
@@ -300,7 +305,12 @@
       <DataExecutionPrevention>true</DataExecutionPrevention>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" "$(TargetDir)BlackBoneDrv10.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" "$(TargetDir)BlackBoneDrv81.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   "$(TargetDir)BlackBoneDrv8.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   "$(TargetDir)BlackBoneDrv7.sys"
+if exist "$(TargetDir)BlackBone64.sys" copy /Y "$(TargetDir)BlackBone64.sys" "$(TargetDir)BlackBoneDrv10.sys"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug(DLL)|Win32'">
@@ -327,7 +337,12 @@
       <DataExecutionPrevention>true</DataExecutionPrevention>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" "$(TargetDir)BlackBoneDrv10.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" "$(TargetDir)BlackBoneDrv81.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   "$(TargetDir)BlackBoneDrv8.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   "$(TargetDir)BlackBoneDrv7.sys"
+if exist "$(TargetDir)BlackBone64.sys" copy /Y "$(TargetDir)BlackBone64.sys" "$(TargetDir)BlackBoneDrv10.sys"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -436,7 +451,12 @@
       <Profile>false</Profile>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" "$(TargetDir)BlackBoneDrv10.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" "$(TargetDir)BlackBoneDrv81.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   "$(TargetDir)BlackBoneDrv8.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   "$(TargetDir)BlackBoneDrv7.sys"
+if exist "$(TargetDir)BlackBone64.sys" copy /Y "$(TargetDir)BlackBone64.sys" "$(TargetDir)BlackBoneDrv10.sys"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release(XP)|Win32'">
@@ -466,7 +486,12 @@
       <Profile>false</Profile>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" "$(TargetDir)BlackBoneDrv10.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" "$(TargetDir)BlackBoneDrv81.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   "$(TargetDir)BlackBoneDrv8.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   "$(TargetDir)BlackBoneDrv7.sys"
+if exist "$(TargetDir)BlackBone64.sys" copy /Y "$(TargetDir)BlackBone64.sys" "$(TargetDir)BlackBoneDrv10.sys"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release(DLL)|Win32'">
@@ -496,7 +521,12 @@
       <Profile>false</Profile>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\3rd_party\BeaEngine\Win32\Dll\BeaEngineCheetah.dll" "$(TargetDir)BeaEngineCheetah.dll"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win10Release\BlackBoneDrv10.sys" "$(TargetDir)BlackBoneDrv10.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8.1Release\BlackBoneDrv81.sys" "$(TargetDir)BlackBoneDrv81.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win8Release\BlackBoneDrv8.sys"   "$(TargetDir)BlackBoneDrv8.sys"
+if exist "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   copy /Y "$(ProjectDir)..\BlackBoneDrv\bin\x64\Win7Release\BlackBoneDrv7.sys"   "$(TargetDir)BlackBoneDrv7.sys"
+if exist "$(TargetDir)BlackBone64.sys" copy /Y "$(TargetDir)BlackBone64.sys" "$(TargetDir)BlackBoneDrv10.sys"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
